@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+apscheduler = "*"
+pysocks = "*"
+python-dotenv = "*"
+peewee = "*"
+pytils = "*"
+matplotlib = "*"
+psycopg2-binary = "*"
+jinja2 = "*"
+python-telegram-bot = "11.1.0"
+
+[requires]
+python_version = "3.10"
+
+[scripts]
+StatBotMain = 'python StatBotMain.py'

@@ -1,0 +1,10 @@
+apscheduler~=3.9.1.post1
+pysocks
+python-dotenv~=0.21.0
+peewee~=3.15.4
+pytils~=0.4.1
+matplotlib
+psycopg2-binary
+jinja2~=3.1.2
+python-telegram-bot==11.1.0
+Pillow~=9.3.0
