@@ -907,7 +907,7 @@ class StatModule(BasicModule):  # TODO: Провести оптимизацию
         if total > 0:
             output.append(f'\n\t\t[📯] {sum_stat_old}\t->\t{total + sum_stat_old} (+{total})')
         rewards *= 0.1 if created else 1
-        output.append(f'\t\t[☯️]\t\t+{rewards}\n')
+        output.append(f'\t\t[☯️]\t\t+{rewards:.1f}\n')
         output.append(f'<code>Последние обновление <b>{dt.distance_of_time_in_words(player.last_update, to_time=time.time())}</b></code>')
 
         u = InnerUpdate()

@@ -312,7 +312,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
                         is_queued=True,
                         text=self.get_assigned_message(raid_assigned)
                     )
-                except (Exception, ):
+                except (Exception,):
                     pass
 
     @log
@@ -384,7 +384,8 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
         for gang in gangs:
             reply_markup.append(
                 [InlineKeyboardButton(
-                    text=f'{gang.name} ({Wasteland.group_type_translate.get(gang.type, "Неопределенно")}) [ {gang.members.filter(Player.is_active & (Player.frozen == False)).count()} ч. ]',
+                    text=f'{gang.name} ({Wasteland.group_type_translate.get(gang.type, "Неопределенно")}) [ '
+                         f'{gang.members.filter(Player.is_active & (Player.frozen == False)).count()} ч. ]',
                     callback_data=f'raid_{km}_{gang.id}'
                 )]
             )
@@ -1014,8 +1015,8 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
 
             elif arg.isdigit() and int(arg) in Wasteland.raid_kms:
                 for raid_assigned in RaidAssign.select().where(
-                    RaidAssign.km_assigned == int(arg),
-                    RaidAssign.time == next_raid_time
+                        RaidAssign.km_assigned == int(arg),
+                        RaidAssign.time == next_raid_time
                 ):
                     res.append(self.format_raid_km_line(raid_assigned.player))
 
@@ -1035,12 +1036,16 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
 
         liders = [g.id for g in update.player.liders]
 
-        radar_query_dates = Radar.select(Radar.player_id, peewee.fn.MAX(Radar.time).alias('MAXDATE')).group_by(Radar.player_id).alias('radar_max')
+        radar_query_dates = Radar.select(
+            Radar.player_id, peewee.fn.MAX(
+                Radar.time
+            ).alias('MAXDATE')
+        ).group_by(Radar.player_id).alias('radar_max')
 
         radar_query = Radar.select(Radar.km, Radar.player_id, Radar.time).join(
             radar_query_dates, on=(
-                Radar.player_id == radar_query_dates.c.player_id &
-                Radar.time == radar_query_dates.c.MAXDATE
+                    (Radar.player_id == radar_query_dates.c.player_id) &
+                    (Radar.time == radar_query_dates.c.MAXDATE)
             )
         )
 
@@ -1072,18 +1077,18 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
             Player.dzen,
             RaidAssign.status_id,
             status_case.alias('informer')
-        )\
-            .join(GroupPlayerThrough, on=(GroupPlayerThrough.player_id == Player.id))\
-            .join(Group, on=(Group.id == GroupPlayerThrough.group_id))\
+        ) \
+            .join(GroupPlayerThrough, on=(GroupPlayerThrough.player_id == Player.id)) \
+            .join(Group, on=(Group.id == GroupPlayerThrough.group_id)) \
             .join(RaidAssign, on=(RaidAssign.player_id == Player.id)) \
             .join(radar_query, on=(radar_query.c.player_id == Player.id)) \
             .where(
-                (
+            (
                     ((Group.name << argument_parts) | (Group.alias << argument_parts)) |
                     (RaidAssign.km_assigned << [int(x) for x in argument_parts if x.isdigit()]) |
                     (Player.id << [p.id for p in players])
-                ) & (RaidAssign.time == raid_time)
-            ) \
+            ) & (RaidAssign.time == raid_time)
+        ) \
             .distinct() \
             .order_by(RaidAssign.km_assigned.desc(), status_case.asc(), radar_query.c.km.desc(), Player.sum_stat.desc(), Player.dzen.desc())
 
@@ -1112,7 +1117,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
             power_counter['peoples'] += 1
 
             formatter_report += f'{emojie}{km_assigned:02}|{emojie_speed}{km_radar:02}|{delta}|🎓{sum_stat:03.1f}|🏵{dzen:02}|{mention_html(chat_id, nickname)}\n'
-        formatter_report += f'🎓{power_counter["sum_stat"]}к на {power_counter["peoples"]} человек\n\n'
+        formatter_report += f'🎓{power_counter["sum_stat"]:.1f}к на {power_counter["peoples"]} человек\n\n'
 
         formatter_report += (
             'Аналитика:\n'

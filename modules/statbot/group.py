@@ -42,7 +42,7 @@ class GroupModule(BasicModule):
 
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         # called on goat forward after it has been parsed in the parser module
-        self.add_inner_handler(InnerHandler(UpdateFilter('goat'), self.goat_handler_new))
+        self.add_inner_handler(InnerHandler(UpdateFilter('goat'), self.goat_handler))
         # called on gang forward after it had been parsed in the parser module
         self.add_inner_handler(InnerHandler(UpdateFilter('gang'), self.gang_handler))
 
@@ -155,7 +155,7 @@ class GroupModule(BasicModule):
 
         self.message_manager.bot.delete_message(chat_id=update.telegram_update.message.chat_id, message_id=update.telegram_update.message.message_id)
 
-    def goat_handler_new(self, update: GroupParseResult):
+    def goat_handler(self, update: GroupParseResult):
         message = update.telegram_update.message
         goat, created = Group.get_or_create(name=update.goat.name, type='goat')
         if not created and update.date < goat.last_update:
@@ -183,7 +183,7 @@ class GroupModule(BasicModule):
         gangs = [
             {
                 'name': gang,
-                'group_type': 'gang',
+                'type': 'gang',
                 'parent': goat,
                 'is_active': goat.is_active,
                 'last_update': update.date

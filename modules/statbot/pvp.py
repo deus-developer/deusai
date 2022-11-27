@@ -222,7 +222,7 @@ class PVPModule(BasicModule):  # TODO: Полностью переработат
         for player in Player.select(Player.id, Player.nickname).where(Player.nickname << nicknames).dicts():
             radars_update.append(
                 {
-                    'player_id': player['user_id'],
+                    'player_id': player['id'],
                     'km': view.km,
                     'status': 0,
                     'time': update.date
@@ -491,11 +491,6 @@ class PVPModule(BasicModule):  # TODO: Полностью переработат
             self.message_manager.send_message(chat_id=message.chat_id, text='Пресс /F', reply_to_message_id=message.message_id)
         else:
             self.message_manager.send_message(chat_id=message.chat_id, text='Сяб за информейшн, щпоня', reply_to_message_id=message.message_id)
-
-        self.message_manager.bot.forward_message(
-            chat_id=-1001411460180, message_id=message.message_id,
-            from_chat_id=message.chat_id
-        )
 
     def _wwtop_handler(self, update: PlayerParseResult):
         message = update.telegram_update.message
