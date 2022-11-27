@@ -51,7 +51,19 @@ class ActivatedModule(BasicModule):
                 [CustomInnerFilters.from_player]
             )
         )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter(command='chatid', description='Получить id чата'), self._chat_id,
+            )
+        )
         super().__init__(event_manager, message_manager, dispatcher)
+
+
+    def _chat_id(self, update: Update):
+        return self.message_manager.send_message(
+            chat_id=update.telegram_update.message.chat_id,
+            text=f'🆔 <code>{update.telegram_update.message.chat_id}</code>',
+        )
 
     @permissions(is_admin)
     @command_handler(

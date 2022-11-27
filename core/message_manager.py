@@ -119,6 +119,8 @@ class MessageManager:
         # if settings.DEBUG or settings.TESTING and 'chat_id' in kwargs:  # in debug mode send messages only to admin
         #     kwargs['chat_id'] = settings.ADMIN_CHAT_ID # Nope it's not good for testing
 
+        kwargs.setdefault('parse_mode', 'HTML')
+
         if not is_queued:
             self._m_deque.append(time.time())
             if kwargs.get('chat_id') and kwargs.get('chat_id') < 0:

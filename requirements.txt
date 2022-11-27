@@ -7,5 +7,5 @@ matplotlib
 psycopg2-binary
 jinja2~=3.1.2
 python-telegram-bot==12.8
-git+https://github.com/deus-developer/python-telegram-bot/archive/branch.zip
+git+https://github.com/deus-developer/python-telegram-bot.git
 Pillow~=9.3.0
