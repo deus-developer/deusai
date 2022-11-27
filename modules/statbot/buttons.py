@@ -1,4 +1,9 @@
-from core import Command, Update as InnerUpdate
+from core import (
+    Command,
+    Update as InnerUpdate
+)
+
+
 class ButtonsList:
     class INFO_BUTTON_C:
         def __init__(self):
@@ -40,7 +45,6 @@ class ButtonsList:
                 return False
             update.command = Command()
             return True
-
 
     INFO_BUTTON = INFO_BUTTON_C()
     STAT_BUTTON = STAT_BUTTON_C()

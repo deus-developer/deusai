@@ -1,8 +1,5 @@
 <!DOCTYPE html>
-</body>
-</html>
-<html>
-
+<html lang="ru">
 <head>
 	<title>График прокачки {{nickname}}</title>
 	<meta charset="UTF-8">
@@ -16,76 +13,72 @@
 		}
 	</style>
 </head>
-
 <body>
-	<div style="width:100%;">
-		<canvas id="canvas"></canvas>
-	</div>
-	<br>
-	<br>
-	<script>
-		var color = Chart.helpers.color;
-		var config = {
-			type: 'line',
-			data: {
-				datasets: [
-							{% for data in dataset %}
-								{
-									label: '{{data['label']}}',
-									backgroundColor: color('{{data["color"]}}').alpha(0.5).rgbString(),
-									borderColor: '{{data["color"]}}',
-									fill: false,
-									data: [
-										{% for value in data['dataset'] %}
-											{
-												x: new Date({{value['unix']}}),
-												y: {{value['y']}}
-											},
-										{% endfor %}
-										]
-								},
-							{% endfor %}
-							]
-			},
-			options: {
-				responsive: true,
-				title: {
-					display: true,
-					text: 'График прокачки игрока {{nickname}}'
-				},
-				scales: {
-					xAxes: [{
-						type: 'time',
-						display: true,
-						scaleLabel: {
-							display: true,
-							labelString: 'Дата'
-						},
-						time: {
-		                    unit: 'day'
-		                },
-						ticks: {
-							major: {
-								fontStyle: 'bold',
-								fontColor: '#FF0000'
-							}
-						}
-					}],
-					yAxes: [{
-						display: true,
-						scaleLabel: {
-							display: true,
-							labelString: 'Значение'
-						}
-					}]
-				}
-			}
-		};
+	<div style="width:100%;"><canvas id="canvas"></canvas></div>
 
-		window.onload = function() {
+	<script>
+        const color = Chart.helpers.color;
+        const config = {
+            type: 'line',
+            data: {
+                datasets: [
+                    {% for data in dataset %}
+                        {
+                            label: '{{data['label']}}',
+                            backgroundColor: color('{{data["color"]}}').alpha(0.5).rgbString(),
+                            borderColor: '{{data["color"]}}',
+                            fill: false,
+                            data: [
+                                {% for value in data['dataset'] %}
+                                    {
+                                        x: new Date({{value['unix']}}),
+                                        y: {{value['y']}}
+                                    },
+                                {% endfor %}
+                            ]
+                        },
+                    {% endfor %}
+                ]
+            },
+            options: {
+                responsive: true,
+                title: {
+                    display: true,
+                    text: 'График прокачки игрока {{nickname}}'
+                },
+                scales: {
+                    xAxes: [{
+                        type: 'time',
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                            labelString: 'Дата'
+                        },
+                        time: {
+                            unit: 'day'
+                        },
+                        ticks: {
+                            major: {
+                                fontStyle: 'bold',
+                                fontColor: '#FF0000'
+                            }
+                        }
+                    }],
+                    yAxes: [{
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                            labelString: 'Значение'
+                        }
+                    }]
+                }
+            }
+        };
+
+        window.onload = function() {
 			moment.locale('ru')
-			var ctx = document.getElementById('canvas').getContext('2d');
-			window.myLine = new Chart(ctx, config);
+            const ctx = document.getElementById('canvas').getContext('2d');
+            window.myLine = new Chart(ctx, config);
 		};
 	</script>
 </body>

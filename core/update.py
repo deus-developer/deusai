@@ -10,6 +10,15 @@ class Update:
         self, telegram_update: telegram.Update = None, delay: datetime.timedelta = None,
         command: Command = None
     ):
+        self.taking = None
+        self.taking_success = None
+        self.message = None
+        self.scuffle = None
+        self.lynch = None
+        self.pokemob_dead = None
+        self.dzen_enhancement = None
+        self.notebook = None
+        self.stock = None
         self.date = None
         self.timedelta = None
         self.telegram_update = None

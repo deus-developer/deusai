@@ -45,7 +45,7 @@ class StatBot:
             common_modules.ActivityModule,
             common_modules.CommandModule,  # Активити + Обработка команд
 
-            statbot_modules.StatModule, statbot_modules.BossModule,
+            statbot_modules.StatModule,
             statbot_modules.ParserModule, statbot_modules.RaidResultModule,
 
             statbot_modules.TriggersModule,  # Работа с текстовыми соо

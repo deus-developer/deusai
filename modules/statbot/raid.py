@@ -1,29 +1,70 @@
 import datetime
-import re
-import peewee
-import json
 import functools
+import re
+from collections import (
+    Counter,
+    defaultdict
+)
 
-from collections import Counter, defaultdict
-from telegram import ParseMode, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
+import peewee
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ParseMode
+)
+from telegram.ext import (
+    CallbackQueryHandler,
+    Dispatcher
+)
+from telegram.utils.helpers import mention_html
+
 from config import settings
-from core import EventManager, MessageManager, Update as InnerUpdate, Handler as InnerHandler, UpdateFilter, CommandFilter
-from decorators import command_handler, permissions, get_invoker_raid
-from decorators.permissions import is_admin, is_developer
-from decorators.users import get_player, get_players, get_users_from_text
-from utils.functions import CustomInnerFilters, get_link
-from decorators.update import inner_update
+from core import (
+    CommandFilter,
+    EventManager,
+    Handler as InnerHandler,
+    MessageManager,
+    Update as InnerUpdate,
+    UpdateFilter
+)
+from decorators import (
+    command_handler,
+    get_invoker_raid,
+    permissions
+)
+from decorators.log import lead_time
 from decorators.log import log
-from models import Group, RaidAssign, Player, Feedback, TelegramUser, Vote, VoteAnswer, RaidsInterval, GroupPlayerThrough, Radar
+from decorators.permissions import (
+    is_admin,
+    is_developer
+)
+from decorators.update import inner_update
+from decorators.users import (
+    get_player,
+    get_players
+)
+from models import (
+    Feedback,
+    Group,
+    GroupPlayerThrough,
+    Player,
+    Radar,
+    RaidAssign,
+    RaidsInterval,
+    TelegramUser,
+    Vote,
+    VoteAnswer
+)
 from models.raid_assign import RaidStatus
 from modules import BasicModule
 from modules.statbot.parser import PlayerParseResult
-from modules.statbot.notifications import NotificationsModule
-from utils import next_raid, last_raid
+from utils import (
+    last_raid,
+    next_raid
+)
+from utils.functions import CustomInnerFilters
 from ww6StatBotWorld import Wasteland
-from telegram.utils.helpers import mention_html
-from decorators.log import lead_time
+
 
 class RaidkmIcons:
     ON_PLACE = '🏕'
@@ -35,6 +76,7 @@ class RaidkmIcons:
     ACCEPTED = '👍'
     IN_PROCESS = '👊'
 
+
 RAIDKM_ICONS = {
     RaidStatus.ASSIGNED: '🌚',
     RaidStatus.CONFIRMED: "Ты точно подтвердил участие в рейде.",
@@ -42,14 +84,15 @@ RAIDKM_ICONS = {
     RaidStatus.IN_PROCESS: 'Ты подтвердил участие в рейде. Никуда не уходи до его начала',
 }
 RAIDSTATUS_ICONS = {
-    RaidStatus.ON_PLACE:'🏕',
-    RaidStatus.CONFIRMED:'👊',
-    RaidStatus.UNKNOWN:'❓',
-    RaidStatus.ACCEPTED:'🏃‍‍',
-    RaidStatus.IN_PROCESS:'👊',
+    RaidStatus.ON_PLACE: '🏕',
+    RaidStatus.CONFIRMED: '👊',
+    RaidStatus.UNKNOWN: '❓',
+    RaidStatus.ACCEPTED: '🏃‍‍',
+    RaidStatus.IN_PROCESS: '👊',
 }
 
-class RaidModule(BasicModule): #TODO: Провести оптимизацию
+
+class RaidModule(BasicModule):  # TODO: Провести оптимизацию
     """ 
     Raids stuff
     """
@@ -57,55 +100,127 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raid'), self._assign_players,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raid'), self._assign_players,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raid_n'), self._assign_km_menu,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raid_n'), self._assign_km_menu,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raids21_z'), self._raids21_z_com,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raids21_z'), self._raids21_z_com,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('sendpin'), self._sendpin,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('sendpin'), self._sendpin,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('when_raid'), self._when_raid,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('when_raid'), self._when_raid,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raidkm'), self._get_players_km,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
-        self.add_inner_handler(InnerHandler(CommandFilter('raidkm_n'), self._get_players_km_new,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidkm'), self._get_players_km,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidkm_n'), self._get_players_km_new,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_masterpin'), self._masterpin(),
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_masterpin_l'), self._masterpin(is_last=True),
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_masterpin'), self._masterpin(),
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_masterpin_l'), self._masterpin(is_last=True),
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_short'), self._raidshort(),
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_short_l'), self._raidshort(is_last=True),
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_short'), self._raidshort(),
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_short_l'), self._raidshort(is_last=True),
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('my_raidpin'), self._my_raidpin,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('my_raidpin'), self._my_raidpin,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_accept'), self._raidpin_accept,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.private]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_accept'), self._raidpin_accept,
+                [CustomInnerFilters.from_player, CustomInnerFilters.private]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_reject'), self._raidpin_reject,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.private]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_reject'), self._raidpin_reject,
+                [CustomInnerFilters.from_player, CustomInnerFilters.private]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raidpin_help'), self._raidpin_help,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raidpin_help'), self._raidpin_help,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('raid_su'), self._raid_status_update,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
-        self.add_inner_handler(InnerHandler(CommandFilter('raid_statuses'), self._raid_status_ls,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raid_su'), self._raid_status_update,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('raid_statuses'), self._raid_status_ls,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('test_raid_votes'), self._test_votes,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.private]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('test_raid_votes'), self._test_votes,
+                [CustomInnerFilters.from_player, CustomInnerFilters.private]
+            )
+        )
 
         self.add_inner_handler(InnerHandler(UpdateFilter('profile'), self._update_from_profile))
         self.add_inner_handler(InnerHandler((UpdateFilter('profile') & UpdateFilter('raid')), self._confirm_raid_from_profile))
@@ -159,8 +274,10 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             for title in ['🕳Крышки [ 32км ]', '⛑ Эфедрин [ 24км ]', '🏖Отдых [ 12км ]']:
                 ans = VoteAnswer.create(vote=vote, title=title)
                 answers.append(ans)
-                group = Group.create(   name=f'Vote_{vote.id}_{ans.id}', parent=vote_group,
-                                        type='vote', is_active=True)
+                group = Group.create(
+                    name=f'Vote_{vote.id}_{ans.id}', parent=vote_group,
+                    type='vote', is_active=True
+                )
                 group.liders = goat.liders
                 group.save()
 
@@ -169,12 +286,12 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                 results.append(f'\t\t{idx}. <code>{answer.title}</code>\n\t\t\t- Vote_{vote.id}_{answer.id}')
             results = '\n'.join(results)
             text = (
-                    f'<b>Опрос #{vote.id}</b> начался.\n'
-                    f'Его тема: <b>{vote.subject}</b>\n'
-                    f'\nРезультаты в группах:\n{results}\n'
-                )
+                f'<b>Опрос #{vote.id}</b> начался.\n'
+                f'Его тема: <b>{vote.subject}</b>\n'
+                f'\nРезультаты в группах:\n{results}\n'
+            )
             for lider in goat.liders:
-                self.message_manager.send_message(chat_id=lider.telegram_user.chat_id, text = text, parse_mode='HTML')
+                self.message_manager.send_message(chat_id=lider.telegram_user.chat_id, text=text, parse_mode='HTML')
             pls = []
             for player in goat.members.filter((Player.is_active == True) & (Player.frozen == False)):
                 raid_assigned = player.actual_raid
@@ -190,10 +307,12 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
                 chat_id = player.telegram_user_id
                 try:
-                    self.message_manager.send_message(chat_id=chat_id,
-                                                      is_queued=True,
-                                                      text=self.get_assigned_message(raid_assigned))
-                except Exception as e:
+                    self.message_manager.send_message(
+                        chat_id=chat_id,
+                        is_queued=True,
+                        text=self.get_assigned_message(raid_assigned)
+                    )
+                except (Exception, ):
                     pass
 
     @log
@@ -209,12 +328,16 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         if gangs.count() == 0:
             return self.message_manager.send_message(chat_id=message.chat_id, text='Нет доступа.')
         raid_time = next_raid()
-        pins_count_ = RaidAssign.select(RaidAssign.km_assigned, peewee.fn.COUNT(RaidAssign.km_assigned))\
-                                .where(RaidAssign.time == raid_time)\
-                                .group_by(RaidAssign.km_assigned)
+        pins_count_ = RaidAssign.select(RaidAssign.km_assigned, peewee.fn.COUNT(RaidAssign.km_assigned)) \
+            .where(RaidAssign.time == raid_time) \
+            .group_by(RaidAssign.km_assigned)
         pins_count = {}
         for km in pins_count_.dicts():
-            pins_count.update({km.get('km_assigned', 0): km.get('count', 0)})
+            pins_count.update(
+                {
+                    km.get('km_assigned', 0): km.get('count', 0)
+                }
+            )
 
         reply_markup = []
         for name, info in Wasteland.raid_locations.items():
@@ -227,14 +350,20 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{raid_time}</b>\n\t\t\t<code>Выбирайте рейдовый КМ:</code>'
         if update.telegram_update.callback_query:
             if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
-                self.message_manager.send_message(  chat_id=message.chat_id, reply_markup=reply_markup,
-                                                    text=text, parse_mode='HTML', is_queued=False)
+                self.message_manager.send_message(
+                    chat_id=message.chat_id, reply_markup=reply_markup,
+                    text=text, parse_mode='HTML', is_queued=False
+                )
             else:
-                self.message_manager.update_msg(  chat_id=message.chat_id, message_id = message.message_id, reply_markup=reply_markup,
-                                                    text=text, parse_mode='HTML', is_queued=False)
+                self.message_manager.update_msg(
+                    chat_id=message.chat_id, message_id=message.message_id, reply_markup=reply_markup,
+                    text=text, parse_mode='HTML', is_queued=False
+                )
         else:
-            self.message_manager.send_message(  chat_id=message.chat_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.send_message(
+                chat_id=message.chat_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
 
     @log
     @inner_update()
@@ -244,25 +373,35 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         message = callback_query.message
         gangs = update.player.liders
         if gangs.count() == 0:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text="У тебя нет доступа.")
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text="У тебя нет доступа."
+            )
 
         m = self._re_assign_group_menu.search(callback_query.data)
         km = int(m.group('km'))
         reply_markup = []
         for gang in gangs:
-            reply_markup.append([InlineKeyboardButton(text=f'{gang.name} ({Wasteland.group_type_translate.get(gang.type, "Неопределенно")}) [ {gang.members.filter((Player.is_active) & (Player.frozen == False)).count()} ч. ]',
-                                                        callback_data=f'raid_{km}_{gang.id}')])
+            reply_markup.append(
+                [InlineKeyboardButton(
+                    text=f'{gang.name} ({Wasteland.group_type_translate.get(gang.type, "Неопределенно")}) [ {gang.members.filter(Player.is_active & (Player.frozen == False)).count()} ч. ]',
+                    callback_data=f'raid_{km}_{gang.id}'
+                )]
+            )
 
         reply_markup = InlineKeyboardMarkup([*reply_markup, [InlineKeyboardButton(text='Назад ◀️', callback_data='raid_menu')]])
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Выбирайте рейдовую группу:</code>'
         if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
-            self.message_manager.send_message(  chat_id=message.chat_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.send_message(
+                chat_id=message.chat_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
         else:
-            self.message_manager.update_msg(  chat_id=message.chat_id, message_id = message.message_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.update_msg(
+                chat_id=message.chat_id, message_id=message.message_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
 
     @log
     @inner_update()
@@ -277,20 +416,28 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
         group = Group.get_or_none(Group.id == group_id)
         if not group:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Группы с ID = {group_id} не существует.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Группы с ID = {group_id} не существует.'
+            )
         if update.player not in group.liders:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Ты не являешься лидером этой группы.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Ты не являешься лидером этой группы.'
+            )
         reply_markup, text = self._generate_group_menu(group, km)
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Установите рейдеров <b>{group.name}</b> на точку:</code>'
         if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
-            self.message_manager.send_message(  chat_id=message.chat_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.send_message(
+                chat_id=message.chat_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
         else:
-            self.message_manager.update_msg(  chat_id=message.chat_id, message_id = message.message_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.update_msg(
+                chat_id=message.chat_id, message_id=message.message_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
 
     @log
     @inner_update()
@@ -305,14 +452,18 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
         group = Group.get_or_none(Group.id == group_id)
         if not group:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Группы с ID = {group_id} не существует.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Группы с ID = {group_id} не существует.'
+            )
         if group not in update.player.liders:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Ты не являешься лидером этой группы.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Ты не являешься лидером этой группы.'
+            )
         next_raid_time = next_raid()
-        members = group.members.where(Player.is_active == True)\
-        						.filter(Player.frozen == False)
+        members = group.members.where(Player.is_active == True) \
+            .filter(Player.frozen == False)
 
         for member in members:
             if unraid:
@@ -322,18 +473,25 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             else:
                 RaidAssign.assign(next_raid_time, member, km)
 
-        self.message_manager.bot.answer_callback_query( callback_query_id=callback_query.id,
-                                                        show_alert=False, text=f'{"Отменил" if unraid else "Выдал"} группе ПИН на {km}км')
+        self.message_manager.bot.answer_callback_query(
+            callback_query_id=callback_query.id,
+            show_alert=False, text=f'{"Отменил" if unraid else "Выдал"} группе ПИН на {km}км'
+        )
 
         reply_markup, text = self._generate_group_menu(group, km)
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Установите рейдеров <b>{group.name}</b> на точку:</code>'
         if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
-            self.message_manager.send_message(  chat_id=message.chat_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.send_message(
+                chat_id=message.chat_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
         else:
-            self.message_manager.update_msg(  chat_id=message.chat_id, message_id = message.message_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.update_msg(
+                chat_id=message.chat_id, message_id=message.message_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
+
     @log
     @inner_update()
     @get_player
@@ -347,12 +505,16 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
         player = Player.get_or_none(Player.id == player_id)
         if not player:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Игрока с ID = {player_id} не существует.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Игрока с ID = {player_id} не существует.'
+            )
 
         if not player.is_active:
-        	return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Этот игрок неактивен.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Этот игрок неактивен.'
+            )
         groups = update.player.liders
         is_lider = False
         for group in groups:
@@ -360,8 +522,10 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                 is_lider = True
                 break
         if not is_lider:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False, text=f'Ты не лидер этого игрока.')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False, text=f'Ты не лидер этого игрока.'
+            )
         next_raid_time = next_raid()
         if unraid:
             raidpin = player.actual_raid
@@ -370,8 +534,10 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         else:
             RaidAssign.assign(next_raid_time, player, km)
 
-        self.message_manager.bot.answer_callback_query( callback_query_id=callback_query.id,
-                                                        show_alert=False, text=f'{"Отменил" if unraid else "Выдал"} рейд игроку {player.nickname}')
+        self.message_manager.bot.answer_callback_query(
+            callback_query_id=callback_query.id,
+            show_alert=False, text=f'{"Отменил" if unraid else "Выдал"} рейд игроку {player.nickname}'
+        )
         reply_markup = []
         is_all_not = True
         group = Group.get_or_none(Group.id == group_id)
@@ -381,30 +547,42 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         reply_markup, text = self._generate_group_menu(group, km)
 
         if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
-            self.message_manager.send_message(  chat_id=message.chat_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.send_message(
+                chat_id=message.chat_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
         else:
-            self.message_manager.update_msg(  chat_id=message.chat_id, message_id = message.message_id, reply_markup=reply_markup,
-                                                text=text, parse_mode='HTML', is_queued=False)
+            self.message_manager.update_msg(
+                chat_id=message.chat_id, message_id=message.message_id, reply_markup=reply_markup,
+                text=text, parse_mode='HTML', is_queued=False
+            )
 
     def _generate_group_menu(self, group, km):
         reply_markup = []
         is_all_not = True
-        members = group.members.where(Player.is_active == True)\
-                                .filter(Player.frozen == False).order_by(Player.sum_stat.desc())
+        members = group.members.where(Player.is_active == True) \
+            .filter(Player.frozen == False).order_by(Player.sum_stat.desc())
         for member in members:
             raidpin = member.actual_raid
             raidpin_status = raidpin and raidpin.km_assigned == km
             if raidpin_status:
                 is_all_not = False
-            reply_markup.append([InlineKeyboardButton(  text=f'{"✅" if raidpin_status else "❌"} {member.nickname} [{member.sum_stat} 💪]',
-                                                        callback_data=f'{"un" if raidpin_status else ""}raid_player_{km}_{member.id}_{group.id}')])
+            reply_markup.append(
+                [InlineKeyboardButton(
+                    text=f'{"✅" if raidpin_status else "❌"} {member.nickname} [{member.sum_stat} 💪]',
+                    callback_data=f'{"un" if raidpin_status else ""}raid_player_{km}_{member.id}_{group.id}'
+                )]
+            )
 
-        reply_markup = InlineKeyboardMarkup([*reply_markup, 
-                                            [InlineKeyboardButton(   text='Отправить всех' if is_all_not else 'Отменить всем',
-                                                                    callback_data=f'{"" if is_all_not else "un"}raid_group_{km}_{group.id}')],
-                                            [InlineKeyboardButton(text='Назад ◀️', callback_data=f'raid_{km}')]
-                                            ])
+        reply_markup = InlineKeyboardMarkup(
+            [*reply_markup,
+             [InlineKeyboardButton(
+                 text='Отправить всех' if is_all_not else 'Отменить всем',
+                 callback_data=f'{"" if is_all_not else "un"}raid_group_{km}_{group.id}'
+             )],
+             [InlineKeyboardButton(text='Назад ◀️', callback_data=f'raid_{km}')]
+             ]
+        )
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Установите рейдеров <b>{group.name}</b> на точку:</code>'
 
@@ -418,23 +596,24 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
         last_id = RaidsInterval.select(RaidsInterval.id).order_by(RaidsInterval.id.desc()).limit(1).scalar()
         RaidsInterval.create(
-                id=last_id+1,
-                start_date=last,
-                last_date=last + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59)
-            )
+            id=last_id + 1,
+            start_date=last,
+            last_date=last + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59)
+        )
 
     def _raidpin_help(self, update: InnerUpdate):
         """Инструкция по пользованию пином"""
         self.message_manager.send_message(  # todo: переделать на триггер?
-                                            chat_id=update.telegram_update.message.chat_id,
-                                            text='''Попроси админов добавить этот триггер'''
-                                        )
+            chat_id=update.telegram_update.message.chat_id,
+            text='''Попроси админов добавить этот триггер'''
+        )
+
     @permissions(is_admin)
     def _raid_status_ls(self, update: InnerUpdate):
         text = (
-                'Список рейд статусов\n'
-                'Название -> Индекс\n\n'
-            )
+            'Список рейд статусов\n'
+            'Название -> Индекс\n\n'
+        )
         for value, key in RaidStatus.dict().items():
             text += f'<b>{key}</b> -> <code>{value}</code>\n'
         update.telegram_update.message.reply_text(text=text, parse_mode='HTML')
@@ -458,11 +637,11 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             return message.reply_text(f'Статуса с ID = {status_id} не существует\nСписок статусов: /raid_statuses')
 
         query = RaidAssign.update(
-                {
-                    RaidAssign.status_id: status_id,
-                    RaidAssign.is_reported: False
-                }
-            ).where((RaidAssign.player_id << [x.id for x in players]) & (RaidAssign.status_id != status_id) & (RaidAssign.time == time))
+            {
+                RaidAssign.status_id: status_id,
+                RaidAssign.is_reported: False
+            }
+        ).where((RaidAssign.player_id << [x.id for x in players]) & (RaidAssign.status_id != status_id) & (RaidAssign.time == time))
         updated_rows = query.execute()
 
         def formatter(rows: int = 0):
@@ -475,8 +654,10 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             else:
                 return ''
 
-        message.reply_text(f'Обновил <b>{updated_rows}</b> статус{formatter(updated_rows)} рейда <b>{time}</b> на {status_name} ( ID{status_id} )',
-                            parse_mode='HTML')
+        message.reply_text(
+            f'Обновил <b>{updated_rows}</b> статус{formatter(updated_rows)} рейда <b>{time}</b> на {status_name} ( ID{status_id} )',
+            parse_mode='HTML'
+        )
 
     @command_handler(
         regexp=re.compile(r'(?P<km>\d+)\s*(?P<groups>.+)?'),
@@ -490,22 +671,28 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         Принимаются сообщения в формате 'Км имя/алиас группы'
         """
         if len(update.player.liders) == 0:
-            return self.message_manager.send_message(chat_id=update.invoker.chat_id,
-                                                        text='Нет доступа!')
+            return self.message_manager.send_message(
+                chat_id=update.invoker.chat_id,
+                text='Нет доступа!'
+            )
         message = update.telegram_update.message
         km = match.group('km')
         chat_id = settings.GOAT_ADMIN_CHAT_ID if settings.GOAT_ADMIN_CHAT_ID == message.chat_id else update.invoker.chat_id
 
         if not km.isdigit():
-            self.message_manager.send_message(chat_id=chat_id,
-                                              text=f'Пришли км, на который отправить группу, числом')
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text=f'Пришли км, на который отправить группу, числом'
+            )
             return
         else:
             km = int(km)
 
         if km not in Wasteland.raid_kms:
-            self.message_manager.send_message(chat_id=chat_id,
-                                              text='Такой рейдовой локации не существует')
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text='Такой рейдовой локации не существует'
+            )
             return
         next_raid_time = next_raid()
         pls = []
@@ -527,15 +714,17 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         error_groups = []
         for group_name in (match.group('groups') or '').split():
             group = Group.get_by_name(group_name)
-            
+
             if not group:
                 if group_name not in nicknames:
                     error_groups.append(group_name)
                 continue
 
             if update.player not in group.liders:
-                self.message_manager.send_message(chat_id=chat_id,
-                                                    text=f'Ты не являешься лидером группы "{group_name}"')
+                self.message_manager.send_message(
+                    chat_id=chat_id,
+                    text=f'Ты не являешься лидером группы "{group_name}"'
+                )
                 continue
 
             groups.append(group.name)
@@ -543,16 +732,22 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                 RaidAssign.assign(next_raid_time, player, km)
 
         if error_groups:
-            self.message_manager.send_message(chat_id=chat_id,
-                                                text=f'Я не знаю групп: {"; ".join(error_groups)}')
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text=f'Я не знаю групп: {"; ".join(error_groups)}'
+            )
         if groups or pls:
-            self.message_manager.send_message(  chat_id=chat_id,
-                                                text=f'{", ".join(groups + pls)} в '
-                                                   f'{next_raid_time.time()} рейдят {km}км',
-                                                parse_mode=ParseMode.HTML)
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text=f'{", ".join(groups + pls)} в '
+                     f'{next_raid_time.time()} рейдят {km}км',
+                parse_mode=ParseMode.HTML
+            )
         else:
-            self.message_manager.send_message(chat_id=chat_id,
-                                              text=f'Кажется ты никого не послал на рейд.')
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text=f'Кажется ты никого не послал на рейд.'
+            )
 
     def _when_raid(self, update: InnerUpdate):
         """Выдает, через сколько времени будет следующий рейд"""
@@ -561,10 +756,12 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
         seconds %= 60
-        self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id,
-                                          text=f'Ближайший рейд в *{next_raid_time.hour}:00* мск\n'
-                                               f'Т.е. через *{hours:.0f}* ч *{minutes:.0f}* мин *{seconds:.0f}* сек',
-                                          parse_mode=ParseMode.MARKDOWN)
+        self.message_manager.send_message(
+            chat_id=update.telegram_update.message.chat_id,
+            text=f'Ближайший рейд в *{next_raid_time.hour}:00* мск\n'
+                 f'Т.е. через *{hours:.0f}* ч *{minutes:.0f}* мин *{seconds:.0f}* сек',
+            parse_mode=ParseMode.MARKDOWN
+        )
 
     def _sendpin(self, update: InnerUpdate, *args, **kwargs):
         """
@@ -574,11 +771,13 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         message = update.telegram_update.message
 
         if len(update.player.liders) == 0:
-            return self.message_manager.send_message(chat_id=update.invoker.chat_id,
-                                                        text='Нет доступа!')
+            return self.message_manager.send_message(
+                chat_id=update.invoker.chat_id,
+                text='Нет доступа!'
+            )
         access = []
         for group in update.player.liders:
-            for member in group.members.filter((Player.is_active) & (Player.frozen == False)):
+            for member in group.members.filter(Player.is_active & (Player.frozen == False)):
                 if member not in access:
                     access.append(member)
         players = []
@@ -605,7 +804,7 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                         group_names.append(part)
                     else:
                         continue
-                        
+
             groups = []
             for x in group_names:
                 group = Group.get_by_name(x.group('group'))
@@ -641,19 +840,25 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             chat_id = player.telegram_user.chat_id if not settings.DEBUG else update.telegram_update.message.chat_id
             if not (player.settings.pings['sendpin'] if player.settings else True):
                 continue
-            self.message_manager.send_message(chat_id=chat_id,
-                                              is_queued=True,
-                                              text=self.get_assigned_message(raid_assigned))
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                is_queued=True,
+                text=self.get_assigned_message(raid_assigned)
+            )
 
         chat_id = settings.GOAT_ADMIN_CHAT_ID if settings.GOAT_ADMIN_CHAT_ID == message.chat_id else update.invoker.chat_id
         if not pls:
-            self.message_manager.send_message(chat_id=chat_id,
-                                              text='Пины еще не назначены или уже все отправлены')
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text='Пины еще не назначены или уже все отправлены'
+            )
         else:
-            self.message_manager.send_message(  chat_id=chat_id,
-                                                text=f'Пины отправлены игрокам ({len(pls)}):\n\n' +
-                                                   ', '.join(pls),
-                                                parse_mode=ParseMode.HTML)
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text=f'Пины отправлены игрокам ({len(pls)}):\n\n' +
+                     ', '.join(pls),
+                parse_mode=ParseMode.HTML
+            )
 
     @get_invoker_raid
     def _my_raidpin(self, update: InnerUpdate, raid_assigned, *args, **kwargs):
@@ -684,59 +889,75 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
         else:
             markup = None
-        self.message_manager.send_message(chat_id=invoker.chat_id,
-                                          text=raid_assigned.get_msg(),
-                                          parse_mode=ParseMode.HTML,
-                                          reply_markup=markup)
+        self.message_manager.send_message(
+            chat_id=invoker.chat_id,
+            text=raid_assigned.get_msg(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup
+        )
         if raid_assigned.km_assigned in Wasteland.raid_kms_tz:
             self.message_manager.bot.send_photo(
-                    photo=open(f'files/timings/raid{raid_assigned.km_assigned}_timings.jpg', 'rb'),
-                    caption='Тайминги',
-                    chat_id=invoker.chat_id
-                )
+                photo=open(f'files/timings/raid{raid_assigned.km_assigned}_timings.jpg', 'rb'),
+                caption='Тайминги',
+                chat_id=invoker.chat_id
+            )
 
     @get_invoker_raid
     def _raidpin_accept(self, update: InnerUpdate, raid_assigned):
         """Принять назначенный рейд"""
         invoker = update.invoker
         if raid_assigned.status == RaidStatus.HASNOTSEEN:
-            return self.message_manager.send_message(chat_id=invoker.chat_id,
-                                                     text=self.get_assigned_message(raid_assigned))
+            return self.message_manager.send_message(
+                chat_id=invoker.chat_id,
+                text=self.get_assigned_message(raid_assigned)
+            )
         elif raid_assigned.status >= RaidStatus.ACCEPTED:
-            return self.message_manager.send_message(chat_id=invoker.chat_id,
-                                                     text='Ты уже принял назначение на рейд')
+            return self.message_manager.send_message(
+                chat_id=invoker.chat_id,
+                text='Ты уже принял назначение на рейд'
+            )
         raid_assigned.status = RaidStatus.ACCEPTED
         raid_assigned.last_update = update.date
         raid_assigned.save()
-        self.message_manager.send_message(chat_id=invoker.chat_id,
-                                          text=raid_assigned.get_msg(),
-                                          parse_mode=ParseMode.HTML)
+        self.message_manager.send_message(
+            chat_id=invoker.chat_id,
+            text=raid_assigned.get_msg(),
+            parse_mode=ParseMode.HTML
+        )
 
     @get_invoker_raid
     def _raidpin_reject(self, update: InnerUpdate, raid_assigned, *args, **kwargs):
         """Отказаться от  назначенного рейда"""
         invoker = update.invoker
         if raid_assigned.status == RaidStatus.HASNOTSEEN:
-            return self.message_manager.send_message(chat_id=invoker.chat_id,
-                                                     text=self.get_assigned_message(raid_assigned))
+            return self.message_manager.send_message(
+                chat_id=invoker.chat_id,
+                text=self.get_assigned_message(raid_assigned)
+            )
         elif raid_assigned.status == RaidStatus.REJECTED:
-            return self.message_manager.send_message(chat_id=invoker.chat_id,
-                                                     text='Ты уже отказался от рейда')
+            return self.message_manager.send_message(
+                chat_id=invoker.chat_id,
+                text='Ты уже отказался от рейда'
+            )
         raid_assigned.status = RaidStatus.REJECTED
         raid_assigned.last_update = update.date
         raid_assigned.save()
         feedback = Feedback(original_chat_id=invoker.chat_id)
-        m = self.message_manager.send_message(chat_id=settings.GOAT_ADMIN_CHAT_ID,
-                                        text=f'Игрок {mention_html(update.invoker.user_id, update.player.nickname)} отказался от пина [{raid_assigned.km_assigned}]',
-                                        parse_mode=ParseMode.HTML,
-                                        is_queued=False)
+        m = self.message_manager.send_message(
+            chat_id=settings.GOAT_ADMIN_CHAT_ID,
+            text=f'Игрок {mention_html(update.invoker.user_id, update.player.nickname)} отказался от пина [{raid_assigned.km_assigned}]',
+            parse_mode=ParseMode.HTML,
+            is_queued=False
+        )
         if not m:
             return
         feedback.message_id = m.message_id
         feedback.save()
-        self.message_manager.send_message(chat_id=invoker.chat_id,
-                                          text=raid_assigned.get_msg(),
-                                          parse_mode=ParseMode.HTML)
+        self.message_manager.send_message(
+            chat_id=invoker.chat_id,
+            text=raid_assigned.get_msg(),
+            parse_mode=ParseMode.HTML
+        )
 
     @command_handler()
     @lead_time(name='/raidkm command', description='Вызов отображения позиций на рейде')
@@ -758,7 +979,7 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         if not update.command.argument:
             raid_counter = defaultdict(Counter)
             for raid_assigned in RaidAssign.filter(RaidAssign.time == next_raid_time):
-                if not ((raid_assigned.player in access) or (update.invoker.is_admin)):
+                if not ((raid_assigned.player in access) or update.invoker.is_admin):
                     continue
                 if raid_assigned.status >= RaidStatus.ACCEPTED:
                     raid_counter[raid_assigned.km_assigned][RaidkmIcons.ACCEPTED] += 1
@@ -769,15 +990,19 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             def get_counter_formatted(status, km):
                 return f'{status}{raid_counter[km][status]}'
 
-            raid_km_str = "\n".join(f'{x}км ({get_counter_formatted(RaidkmIcons.ACCEPTED, x)}): '
-                                    f'{get_counter_formatted(RaidkmIcons.ON_PLACE, x)} | '
-                                    f'{get_counter_formatted(RaidkmIcons.IN_PROCESS, x)} | '
-                                    f'{get_counter_formatted(RaidkmIcons.FAST, x)}'
-                                    for x in sorted(raid_counter))
-            return self.message_manager.send_message(chat_id=message.chat_id,
-                                                     text=f'Рейд-точки на *{next_raid_time.time().hour}:00* мск:\n\n'
-                                                          f'{raid_km_str}',
-                                                     parse_mode=ParseMode.MARKDOWN)
+            raid_km_str = "\n".join(
+                f'{x}км ({get_counter_formatted(RaidkmIcons.ACCEPTED, x)}): '
+                f'{get_counter_formatted(RaidkmIcons.ON_PLACE, x)} | '
+                f'{get_counter_formatted(RaidkmIcons.IN_PROCESS, x)} | '
+                f'{get_counter_formatted(RaidkmIcons.FAST, x)}'
+                for x in sorted(raid_counter)
+            )
+            return self.message_manager.send_message(
+                chat_id=message.chat_id,
+                text=f'Рейд-точки на *{next_raid_time.time().hour}:00* мск:\n\n'
+                     f'{raid_km_str}',
+                parse_mode=ParseMode.MARKDOWN
+            )
 
         for arg in update.command.argument.split():
             res = []
@@ -786,13 +1011,18 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                 for player in group.members:
                     if player.actual_raid:
                         res.append(self.format_raid_km_line(player))
+
             elif arg.isdigit() and int(arg) in Wasteland.raid_kms:
-                for raid_assigned in RaidAssign.select().where(RaidAssign.km_assigned == int(arg),
-                                                               RaidAssign.time == next_raid_time):
+                for raid_assigned in RaidAssign.select().where(
+                    RaidAssign.km_assigned == int(arg),
+                    RaidAssign.time == next_raid_time
+                ):
                     res.append(self.format_raid_km_line(raid_assigned.player))
 
-            self.message_manager.send_message(chat_id=message.chat_id,
-                                              text='\n'.join(sorted(res)))
+            self.message_manager.send_message(
+                chat_id=message.chat_id,
+                text='\n'.join(sorted(res))
+            )
 
     @permissions(is_admin)
     @get_players(include_reply=True, break_if_no_players=False, callback_message=False)
@@ -807,36 +1037,55 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
         radar_query_dates = Radar.select(Radar.player_id, peewee.fn.MAX(Radar.time).alias('MAXDATE')).group_by(Radar.player_id).alias('radar_max')
 
-        radar_query = Radar.select(Radar.km, Radar.player_id, Radar.time)\
-                           .join(radar_query_dates, on=(Radar.player_id == radar_query_dates.c.player_id) & (Radar.time == radar_query_dates.c.MAXDATE))
+        radar_query = Radar.select(Radar.km, Radar.player_id, Radar.time).join(
+            radar_query_dates, on=(
+                Radar.player_id == radar_query_dates.c.player_id &
+                Radar.time == radar_query_dates.c.MAXDATE
+            )
+        )
 
         time_30 = datetime.datetime.now() - datetime.timedelta(minutes=30)
         time_5 = datetime.datetime.now() - datetime.timedelta(minutes=5)
-        time_delta_case = peewee.Case(None, (
+        time_delta_case = peewee.Case(
+            None, (
                 (radar_query.c.time < time_30, '⏳'),
                 (radar_query.c.time > time_5, '🆕'),
                 (radar_query.c.time.between(time_30, time_5), '🆗')
-            ))
-        status_case = peewee.Case(None, (
+            )
+        )
+        status_case = peewee.Case(
+            None, (
                 (RaidAssign.status_id << [RaidStatus.IN_PROCESS, RaidStatus.CONFIRMED], 0),
                 (RaidAssign.km_assigned == radar_query.c.km, 1),
                 (radar_query.c.km == 0, 4),
                 (RaidAssign.km_assigned > radar_query.c.km, 2)
-            ), 3)
-        _players = Player.select(Player.nickname, Player.telegram_user_id, RaidAssign.km_assigned, radar_query.c.km, time_delta_case.alias('delta'), Player.sum_stat, Player.dzen, RaidAssign.status_id, status_case.alias('informer'))\
-                                   .join(GroupPlayerThrough, on=(GroupPlayerThrough.player_id == Player.id))\
-                                   .join(Group, on=(Group.id == GroupPlayerThrough.group_id))\
-                                   .join(RaidAssign, on=(RaidAssign.player_id == Player.id))\
-                                   .join(radar_query, on=(radar_query.c.player_id == Player.id))\
-                                   .where(
-                                            (
-                                                ((Group.name << argument_parts) | (Group.alias << argument_parts))
-                                                | (RaidAssign.km_assigned << [int(x) for x in argument_parts if x.isdigit()])
-                                                | (Player.id << [p.id for p in players])
-                                            ) & (RaidAssign.time == raid_time)
-                                        )\
-                                   .distinct()\
-                                   .order_by(RaidAssign.km_assigned.desc(), status_case.asc(), radar_query.c.km.desc(), Player.sum_stat.desc(), Player.dzen.desc())\
+            ), 3
+        )
+
+        _players = Player.select(
+            Player.nickname,
+            Player.telegram_user_id,
+            RaidAssign.km_assigned,
+            radar_query.c.km,
+            time_delta_case.alias('delta'),
+            Player.sum_stat,
+            Player.dzen,
+            RaidAssign.status_id,
+            status_case.alias('informer')
+        )\
+            .join(GroupPlayerThrough, on=(GroupPlayerThrough.player_id == Player.id))\
+            .join(Group, on=(Group.id == GroupPlayerThrough.group_id))\
+            .join(RaidAssign, on=(RaidAssign.player_id == Player.id)) \
+            .join(radar_query, on=(radar_query.c.player_id == Player.id)) \
+            .where(
+                (
+                    ((Group.name << argument_parts) | (Group.alias << argument_parts)) |
+                    (RaidAssign.km_assigned << [int(x) for x in argument_parts if x.isdigit()]) |
+                    (Player.id << [p.id for p in players])
+                ) & (RaidAssign.time == raid_time)
+            ) \
+            .distinct() \
+            .order_by(RaidAssign.km_assigned.desc(), status_case.asc(), radar_query.c.km.desc(), Player.sum_stat.desc(), Player.dzen.desc())
 
         formatter_report = f'<b>Рейд {raid_time}</b>\n\n'
 
@@ -846,7 +1095,8 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         power_counter = Counter()
         last_km = None
         for _player in _players.dicts():
-            km_assigned, km_radar, delta, chat_id, nickname, dzen, status_id, informer = _player['km_assigned'], _player['km'], _player['delta'], _player['telegram_user'], _player['nickname'], _player['dzen'], _player['status_id'], _player['informer']
+            km_assigned, km_radar, delta, chat_id, nickname, dzen, status_id, informer = _player['km_assigned'], _player['km'], _player['delta'], _player['telegram_user'], _player[
+                'nickname'], _player['dzen'], _player['status_id'], _player['informer']
             if last_km is None:
                 last_km = km_assigned
             if last_km != km_assigned:
@@ -865,13 +1115,13 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         formatter_report += f'🎓{power_counter["sum_stat"]}к на {power_counter["peoples"]} человек\n\n'
 
         formatter_report += (
-                'Аналитика:\n'
-                f'👊Прожаты: {raid_counter["👊"]}\n'
-                f'🏕На точке: {raid_counter["🏕"]}\n'
-                f'🏃‍‍В пути: {raid_counter["🏃‍‍"]}\n'
-                f'❔Потерялись: {raid_counter["❔"]}\n'
-                f'😴Спят: {raid_counter["😴"]}'
-            )
+            'Аналитика:\n'
+            f'👊Прожаты: {raid_counter["👊"]}\n'
+            f'🏕На точке: {raid_counter["🏕"]}\n'
+            f'🏃‍‍В пути: {raid_counter["🏃‍‍"]}\n'
+            f'❔Потерялись: {raid_counter["❔"]}\n'
+            f'😴Спят: {raid_counter["😴"]}'
+        )
         return message.reply_text(formatter_report, parse_mode='HTML')
 
     def _raidshort(self, is_last=False):
@@ -881,11 +1131,14 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             message = update.telegram_update.message
             kms = update.command.argument.split()
             if len(kms) == 0:
-                return self.message_manager.send_message(chat_id=message.chat_id,
-                                                            text=f'Пришли команду в формате: /raidpin_short{"_l" if is_last else ""} КМ')
+                return self.message_manager.send_message(
+                    chat_id=message.chat_id,
+                    text=f'Пришли команду в формате: /raidpin_short{"_l" if is_last else ""} КМ'
+                )
+
             def format_line(raid_status):
-                return f': <b>{raid_counts[raid_status]}</b> [{int(raid_counts[raid_status]/counts*100)}%]({int(raid_power[raid_status]/1000)}к💪)' \
-                        if raid_power[raid_status] else ''
+                return f': <b>{raid_counts[raid_status]}</b> [{int(raid_counts[raid_status] / counts * 100)}%]({int(raid_power[raid_status] / 1000)}к💪)' \
+                    if raid_power[raid_status] else ''
 
             for arg in kms:
                 raid_power = defaultdict(int)
@@ -910,14 +1163,21 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                     lines.append(f'👊Подтвердили{format_line(RaidStatus.CONFIRMED)}')
                 lines.append(f'❌Отказались{format_line(RaidStatus.REJECTED)}')
                 if counts > 0:
-                    lines.append(f'Эффективность: <b>{int((raid_counts[RaidStatus.IN_PROCESS]+raid_counts[RaidStatus.CONFIRMED])*100/counts)}%</b>'\
-                                f'[{raid_counts[RaidStatus.IN_PROCESS]+raid_counts[RaidStatus.CONFIRMED]}/{counts}ч]')
-                    lines.append(f'Эффективность: <b>{int((raid_power[RaidStatus.IN_PROCESS]+raid_power[RaidStatus.CONFIRMED])/sum_stat*100)}%</b>'\
-                                f'[{int((raid_power[RaidStatus.IN_PROCESS]+raid_power[RaidStatus.CONFIRMED])/1000)}к/{int(sum_stat/1000)}к💪]')
+                    lines.append(
+                        f'Эффективность: <b>{int((raid_counts[RaidStatus.IN_PROCESS] + raid_counts[RaidStatus.CONFIRMED]) * 100 / counts)}%</b>'
+                        f'[{raid_counts[RaidStatus.IN_PROCESS] + raid_counts[RaidStatus.CONFIRMED]}/{counts}ч]'
+                    )
+                    lines.append(
+                        f'Эффективность: <b>{int((raid_power[RaidStatus.IN_PROCESS] + raid_power[RaidStatus.CONFIRMED]) / sum_stat * 100)}%</b>'
+                        f'[{int((raid_power[RaidStatus.IN_PROCESS] + raid_power[RaidStatus.CONFIRMED]) / 1000)}к/{int(sum_stat / 1000)}к💪]'
+                    )
                 message_text = '\n'.join(lines)
-                self.message_manager.send_message(  chat_id=message.chat_id,
-                                                    text=message_text,
-                                                    parse_mode=ParseMode.HTML)
+                self.message_manager.send_message(
+                    chat_id=message.chat_id,
+                    text=message_text,
+                    parse_mode=ParseMode.HTML
+                )
+
         return functools.partial(handler, self)
 
     def _masterpin(self, is_last=False):
@@ -935,10 +1195,13 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
             def format_line(raid_status):
                 return f'<b>{len(raid_users[raid_status])}</b>[{raid_power[raid_status]}]: ' \
                        f'{"; ".join(raid_users[raid_status])}' if raid_users[raid_status] else ''
+
             kms = update.command.argument.split()
             if len(kms) == 0:
-                return self.message_manager.send_message(chat_id=message.chat_id,
-                                                        text=f'Пришли команду в формате: /raidpin_masterpin{"_l" if is_last else ""} КМ')
+                return self.message_manager.send_message(
+                    chat_id=message.chat_id,
+                    text=f'Пришли команду в формате: /raidpin_masterpin{"_l" if is_last else ""} КМ'
+                )
             for arg in kms:
                 raid_power = defaultdict(int)
                 raid_users = defaultdict(list)
@@ -946,7 +1209,7 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
                 time = last_raid() if is_last else next_raid()
 
                 for raid_assign in RaidAssign.next_raid_players(km=int(arg), time=time):
-                    if not ((raid_assign.player in access) or (update.invoker.is_admin)):
+                    if not ((raid_assign.player in access) or update.invoker.is_admin):
                         continue
                     player = raid_assign.player
                     raid_power[raid_assign.status] += player.sum_stat
@@ -965,9 +1228,12 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
 
                 lines.append(f'❌Отказались от участия {format_line(RaidStatus.REJECTED)}')
                 message_text = '\n'.join(lines)
-                self.message_manager.send_message(chat_id=message.chat_id,
-                                                    text=message_text,
-                                                    parse_mode=ParseMode.HTML)
+                self.message_manager.send_message(
+                    chat_id=message.chat_id,
+                    text=message_text,
+                    parse_mode=ParseMode.HTML
+                )
+
         return functools.partial(handler, self)
 
     @staticmethod
@@ -1000,20 +1266,22 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         raid = update.raid
         if not raid:
             return
-        
+
         if message.date - raid.time > datetime.timedelta(hours=8):
             return
-            
+
         raid_assign = player.raid_near_time(raid.time - datetime.timedelta(seconds=5))
         if not (raid_assign and raid_assign.status == RaidStatus.IN_PROCESS):
             return
 
         raid_assign.status = RaidStatus.CONFIRMED
-        self.message_manager.send_message(  chat_id=message.chat_id,
-                                            text=   '✅Вопрос закрыт!✅\n'
-                                                    'Ты окончательно подтвердил своё участие на предыдущем рейде.\n'
-                                                    f'<b>{raid_assign.time}</b>',
-                                            parse_mode=ParseMode.HTML)
+        self.message_manager.send_message(
+            chat_id=message.chat_id,
+            text='✅Вопрос закрыт!✅\n'
+                 'Ты окончательно подтвердил своё участие на предыдущем рейде.\n'
+                 f'<b>{raid_assign.time}</b>',
+            parse_mode=ParseMode.HTML
+        )
         raid_assign.last_update = update.date
         raid_assign.save()
 
@@ -1027,41 +1295,48 @@ class RaidModule(BasicModule): #TODO: Провести оптимизацию
         if not (raid_assign and raid_assign.last_update < update.date):
             return
 
-        if raid_assign.status not in [RaidStatus.IN_PROCESS, RaidStatus.CONFIRMED] and not raid_assign.is_reported and  raid_assign.km_assigned == update.profile.distance:
+        if raid_assign.status not in [RaidStatus.IN_PROCESS, RaidStatus.CONFIRMED] and not raid_assign.is_reported and raid_assign.km_assigned == update.profile.distance:
             if update.profile.on_raid:
                 raid_assign.status = RaidStatus.IN_PROCESS
-                self.message_manager.send_message(  chat_id=message.chat_id,
-                                                    text=   '✊Вижу твой кулак!✊\n'
-                                                            'Ты подтвердил участие в рейде, дождись результатов.\n'
-                                                            f'<b>{raid_assign.time}</b>',
-                                                    parse_mode=ParseMode.HTML)
+                self.message_manager.send_message(
+                    chat_id=message.chat_id,
+                    text='✊Вижу твой кулак!✊\n'
+                         'Ты подтвердил участие в рейде, дождись результатов.\n'
+                         f'<b>{raid_assign.time}</b>',
+                    parse_mode=ParseMode.HTML
+                )
 
             else:
                 raid_assign.status = RaidStatus.ON_PLACE
-                self.message_manager.send_message(  chat_id=message.chat_id,
-                                                    text=   '❗️Покажи кулачок, боец!❗️\n'
-                                                            'Ты на точке, но не записался на рейд.\n'
-                                                            f'<b>{raid_assign.time}</b>',
-                                                    parse_mode=ParseMode.HTML
-                                                )
+                self.message_manager.send_message(
+                    chat_id=message.chat_id,
+                    text='❗️Покажи кулачок, боец!❗️\n'
+                         'Ты на точке, но не записался на рейд.\n'
+                         f'<b>{raid_assign.time}</b>',
+                    parse_mode=ParseMode.HTML
+                )
 
         elif raid_assign.status == RaidStatus.IN_PROCESS and raid_assign.km_assigned != update.profile.distance:
             raid_assign.status = RaidStatus.LEFTED
-            self.message_manager.send_message(  chat_id=settings.GOAT_ADMIN_CHAT_ID,
-                                                text=   f'Игрок {mention_html(raid_assign.player.telegram_user_id, raid_assign.player.nickname)} покинул свою рейд точку [{raid_assign.km_assigned}]\n'
-                                                        f'<b>{raid_assign.time}</b>',
-                                                parse_mode=ParseMode.HTML)
+            self.message_manager.send_message(
+                chat_id=settings.GOAT_ADMIN_CHAT_ID,
+                text=f'Игрок {mention_html(raid_assign.player.telegram_user_id, raid_assign.player.nickname)} покинул свою рейд точку [{raid_assign.km_assigned}]\n'
+                     f'<b>{raid_assign.time}</b>',
+                parse_mode=ParseMode.HTML
+            )
 
-            self.message_manager.send_message(  chat_id=message.chat_id,
-                                                text=   f'Эй, стой! Куда с рейда убежал?\n'
-                                                        f'РЕЙД НА {raid_assign.km_assigned}км. !!!ОДУМАЙСЯ!!!\n'
-                                                        f'<b>{raid_assign.time}</b>',
-                                                parse_mode=ParseMode.HTML)
+            self.message_manager.send_message(
+                chat_id=message.chat_id,
+                text=f'Эй, стой! Куда с рейда убежал?\n'
+                     f'РЕЙД НА {raid_assign.km_assigned}км. !!!ОДУМАЙСЯ!!!\n'
+                     f'<b>{raid_assign.time}</b>',
+                parse_mode=ParseMode.HTML
+            )
         raid_assign.last_update = update.date
         raid_assign.save()
 
     @staticmethod
     def get_assigned_message(raid_assigned):
         return 'Тебе выдан ПИН\n' \
-               'Внимание на /my_raidpin\n'\
+               'Внимание на /my_raidpin\n' \
                f'{raid_assigned.time}'

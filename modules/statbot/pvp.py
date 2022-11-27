@@ -1,35 +1,59 @@
-import re
-import math
 import datetime
-import peewee
-from telegram import ParseMode
-from telegram.ext import Dispatcher, CallbackQueryHandler
-from config import settings
-from core import EventManager, MessageManager, Handler as InnerHandler, UpdateFilter, Update
-from models import Player, Group, TelegramUser, Radar, Item, InventoryItem, PVP
-from modules.statbot.parser import PlayerParseResult
-from modules import BasicModule
-from utils.functions import CustomInnerFilters, get_link, sha1
-from ww6StatBotWorld import Wasteland
-from typing import List
-from telegram.utils.helpers import mention_html
-from pytils import dt
+import re
 import time
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from typing import List
+
+import peewee
+from pytils import dt
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+from telegram.ext import (
+    CallbackQueryHandler,
+    Dispatcher
+)
+from telegram.utils.helpers import mention_html
+
+from core import (
+    EventManager,
+    Handler as InnerHandler,
+    MessageManager,
+    Update,
+    UpdateFilter
+)
 from decorators.update import inner_update
 from decorators.users import get_player
+from models import (
+    Group,
+    InventoryItem,
+    Item,
+    PVP,
+    Player,
+    Radar,
+    TelegramUser
+)
+from modules import BasicModule
+from modules.statbot.parser import PlayerParseResult
+from utils.functions import (
+    CustomInnerFilters,
+    sha1
+)
 
-def median(l):
-    len_l = len(l)
-    l = sorted(l)
+
+def median(array):
+    len_l = len(array)
+    array = sorted(array)
     div, mod = divmod(len_l, 2)
     if mod == 0 and len_l > 0:
-        return (l[div - 1] + l[div]) / 2.0
+        return (array[div - 1] + array[div]) / 2.0
     elif mod == 1:
-        return l[div]
+        return array[div]
 
-def searchclose(l, number):
-    return min(l, key=lambda a:abs(a-number))
+
+def searchclose(array: list[int], number: int) -> int:
+    return min(array, key=lambda a: abs(a - number))
+
 
 class PVPPlayer:
     nickname: str
@@ -40,25 +64,26 @@ class PVPPlayer:
     attacks: List[int]
 
     regeneration: int
-    BATCOH: int 
+    BATCOH: int
 
     def __init__(self):
-        self.nickname = None
+        self.nickname = ''
         self.max_hp = self.max_damage = self.min_damage = self.median_damage = 0
         self.regeneration = self.BATCOH = 0
         self.attacks = []
 
     def __str__(self):
         return (
-                f'NICKNAME: {self.nickname}\n'
-                f'MAX HP: {self.max_hp}\n'
-                f'MAX DAMAGE: {self.max_damage}\n'
-                f'MEDIAN DAMAGE: {self.median_damage}\n'
-                f'MIN DAMAGE: {self.min_damage}\n'
-                f'REGENERATION {self.regeneration}\n'
-                f'BATCOH {self.BATCOH}\n'
-                f'ATTACKS {"; ".join([str(x) for x in sorted(self.attacks)])}'
-            )
+            f'NICKNAME: {self.nickname}\n'
+            f'MAX HP: {self.max_hp}\n'
+            f'MAX DAMAGE: {self.max_damage}\n'
+            f'MEDIAN DAMAGE: {self.median_damage}\n'
+            f'MIN DAMAGE: {self.min_damage}\n'
+            f'REGENERATION {self.regeneration}\n'
+            f'BATCOH {self.BATCOH}\n'
+            f'ATTACKS {"; ".join([str(x) for x in sorted(self.attacks)])}'
+        )
+
 
 class PlayerInfo:
     nickname: str
@@ -85,7 +110,8 @@ class PlayerInfo:
         self.code = '[-- CODE --]'
         self.time = datetime.datetime.now()
 
-class PVPModule(BasicModule): #TODO: Полностью переработать
+
+class PVPModule(BasicModule):  # TODO: Полностью переработать
     """
     message sending
     """
@@ -97,7 +123,9 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
         self.add_inner_handler(InnerHandler(UpdateFilter('meeting'), self._meeting_show_order, [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
         self.add_inner_handler(InnerHandler(UpdateFilter('dome'), self._dome_handler, [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
         self.add_inner_handler(InnerHandler(UpdateFilter('getto'), self._getto_handler, [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]))
-        self.add_inner_handler(InnerHandler(UpdateFilter('pokemob_dead'), self._pokemob_dead_handler, [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]))
+        self.add_inner_handler(
+            InnerHandler(UpdateFilter('pokemob_dead'), self._pokemob_dead_handler, [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private])
+        )
         self.add_inner_handler(InnerHandler(UpdateFilter('scuffle'), self._scuffle_handler, [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]))
         self.add_inner_handler(InnerHandler(UpdateFilter('lynch'), self._lynch_handler, [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]))
         self.add_inner_handler(InnerHandler(UpdateFilter('view'), self._view_handler_update, [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
@@ -130,10 +158,10 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
         main_text = None
         buttons = []
         players = Player.select().where(
-                                (Player.nickname << [x.nickname for x in update.lynch]) & \
-                                ((Player.hp != 0) | (Player.attack != 0) | (Player.dzen != 0)) & \
-                                (Player.is_active == False)
-                            )
+            (Player.nickname << [x.nickname for x in update.lynch]) &
+            ((Player.hp != 0) | (Player.attack != 0) | (Player.dzen != 0)) &
+            (Player.is_active == False)
+        )
         for idx, player in enumerate(players, 1):
             if main_text is None:
                 main_text = self._generate_text_profile(player)
@@ -160,20 +188,21 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             player.fraction = update.dzen_enhancement.fraction
             player.save()
             player.add_stats(
-                                karma=player.karma,
-                                hp = player.hp,
-                                attack = player.attack,
-                                defence = player.defence,
-                                power = player.power,
-                                accuracy = player.accuracy,
-                                oratory = player.oratory,
-                                agility = player.agility,
-                                stamina = player.stamina,
-                                raids21=player.raids21, raid_points=player.raid_points, loose_raids=player.loose_raids, loose_weeks=player.loose_weeks,
-                                dzen = player.dzen if player.dzen > update.dzen_enhancement.dzen else update.dzen_enhancement.dzen,
-                                sum_stat = player.sum_stat,
-                                time = update.date,
-                                regeneration_l = player.regeneration_l, batcoh_l = player.batcoh_l)
+                karma=player.karma,
+                hp=player.hp,
+                attack=player.attack,
+                defence=player.defence,
+                power=player.power,
+                accuracy=player.accuracy,
+                oratory=player.oratory,
+                agility=player.agility,
+                stamina=player.stamina,
+                raids21=player.raids21, raid_points=player.raid_points, loose_raids=player.loose_raids, loose_weeks=player.loose_weeks,
+                dzen=player.dzen if player.dzen > update.dzen_enhancement.dzen else update.dzen_enhancement.dzen,
+                sum_stat=player.sum_stat,
+                time=update.date,
+                regeneration_l=player.regeneration_l, batcoh_l=player.batcoh_l
+            )
 
     def _view_handler_update(self, update: PlayerParseResult):
         message = update.telegram_update.message
@@ -192,13 +221,13 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
 
         for player in Player.select(Player.id, Player.nickname).where(Player.nickname << nicknames).dicts():
             radars_update.append(
-                    {
-                        'player_id': player['user_id'],
-                        'km': view.km,
-                        'status': 0,
-                        'time': update.date
-                    }
-                )
+                {
+                    'player_id': player['user_id'],
+                    'km': view.km,
+                    'status': 0,
+                    'time': update.date
+                }
+            )
             isset_players.append(player['nickname'])
 
         player_insert = [
@@ -211,20 +240,23 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
         for player_id in players_ids:
             player_id = player_id[0]
             radars_update.append(
-                    {
-                        'player_id': player_id,
-                        'km': view.km,
-                        'status': 0,
-                        'time': update.date
-                    }
-                )
+                {
+                    'player_id': player_id,
+                    'km': view.km,
+                    'status': 0,
+                    'time': update.date
+                }
+            )
 
         radars_ids = Radar.insert(radars_update).on_conflict_ignore(True).execute() if radars_update else []
         players_update = Player.insert(insert_codes).on_conflict(
-                                     conflict_target=[Player.nickname],
-                                     update={Player.pu_code: peewee.EXCLUDED.pu_code, Player.last_update: peewee.EXCLUDED.last_update},
-                                     where=((Player.pu_code != peewee.EXCLUDED.pu_code) & (Player.last_update < peewee.EXCLUDED.last_update))
-                                     ).execute() if insert_codes else []
+            conflict_target=[Player.nickname],
+            update={
+                Player.pu_code: peewee.EXCLUDED.pu_code,
+                Player.last_update: peewee.EXCLUDED.last_update
+            },
+            where=((Player.pu_code != peewee.EXCLUDED.pu_code) & (Player.last_update < peewee.EXCLUDED.last_update))
+        ).execute() if insert_codes else []
 
         message.reply_text('Спасибо! Всех запомнил.')
 
@@ -247,37 +279,37 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
 
         goat, gang = player.goat, player.gang
         stats = player.stats
-        
+
         regeneration = player.regeneration_l
         regeneration_percent = self._regen_levels[player.regeneration_l if 0 <= player.regeneration_l <= 4 else 4]
 
-        BATCOH_attack = int((self._BATCOH_levels[player.batcoh_l]+100)/100*player.attack)
+        batcoh_attack = int((self._BATCOH_levels[player.batcoh_l] + 100) / 100 * player.attack)
         batcoh_percent = self._BATCOH_levels[player.batcoh_l if 0 <= player.batcoh_l <= 4 else 4]
 
         perks_count = player.regeneration_l + player.batcoh_l
 
         output = [
-                    f'👱‍♂️ <b>{player.nickname}</b>',
-                    f'🐐Козел: <b>{goat.name}</b>' if goat else None,
-                    f'🤘Банда: <b>{gang.name}</b>' if gang else None,
-                    '',
-                    f'🛡Броня: <code>{player.defence}</code>' if player.defence != 0 else None,
-                    f'⚔️Урон: <code>{player.attack}</code>' if player.attack != 0 else None,
-                    f'❤️Здоровье: <code>{player.hp}</code>' if player.hp != 0 else None,
-                    f'💪Сила: <code>{player.power}</code>' if player.power != 0 else None,
-                    f'🎯Меткость: <code>{player.accuracy}</code>' if player.accuracy != 0 else None,
-                    f'🗣Харизма: <code>{player.oratory}</code>' if player.oratory != 0 else None,
-                    f'🤸🏽Ловкость: <code>{player.agility}</code>' if player.agility != 0 else None,
-                    f'🔋Выносливость: <code>{player.stamina}</code>' if player.stamina != 0 else None,
-                    '',
-                    f'🏵Дзен: <code>{player.dzen}</code>',
-                    '',
-                    f'Прокаченные перки: {perks_count} шт.' if perks_count > 0 else None,
-                    f'\t\t❣️Регенерация: <code>{player.regeneration_l}</code> уровень ( +{regeneration_percent}% )' if player.regeneration_l > 0 else None,
-                    f'\t\t⚡️Критический урон: <code>{BATCOH_attack}</code> ( +{batcoh_percent}% )' if player.batcoh_l > 0 else None,
-                    '',
-                    f'<b>📅Обновлён {dt.distance_of_time_in_words(stats.time if stats else player.last_update, to_time=time.time())}</b>'
-                ]
+            f'👱‍♂️ <b>{player.nickname}</b>',
+            f'🐐Козел: <b>{goat.name}</b>' if goat else None,
+            f'🤘Банда: <b>{gang.name}</b>' if gang else None,
+            '',
+            f'🛡Броня: <code>{player.defence}</code>' if player.defence != 0 else None,
+            f'⚔️Урон: <code>{player.attack}</code>' if player.attack != 0 else None,
+            f'❤️Здоровье: <code>{player.hp}</code>' if player.hp != 0 else None,
+            f'💪Сила: <code>{player.power}</code>' if player.power != 0 else None,
+            f'🎯Меткость: <code>{player.accuracy}</code>' if player.accuracy != 0 else None,
+            f'🗣Харизма: <code>{player.oratory}</code>' if player.oratory != 0 else None,
+            f'🤸🏽Ловкость: <code>{player.agility}</code>' if player.agility != 0 else None,
+            f'🔋Выносливость: <code>{player.stamina}</code>' if player.stamina != 0 else None,
+            '',
+            f'🏵Дзен: <code>{player.dzen}</code>',
+            '',
+            f'Прокаченные перки: {perks_count} шт.' if perks_count > 0 else None,
+            f'\t\t❣️Регенерация: <code>{player.regeneration_l}</code> уровень ( +{regeneration_percent}% )' if player.regeneration_l > 0 else None,
+            f'\t\t⚡️Критический урон: <code>{batcoh_attack}</code> ( +{batcoh_percent}% )' if player.batcoh_l > 0 else None,
+            '',
+            f'<b>📅Обновлён {dt.distance_of_time_in_words(stats.time if stats else player.last_update, to_time=time.time())}</b>'
+        ]
         return '\n'.join(list(filter(lambda x: x is not None, output)))
 
     def _meeting_show(self, update: PlayerParseResult):
@@ -286,9 +318,9 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
         if not meeting.nic:
             return
 
-        players = Player.select()\
-                        .where(peewee.fn.LOWER(Player.nickname).contains(meeting.nic.lower()) | (Player.pu_code == meeting.code))\
-                        .order_by(Player.pu_code.desc()).limit(3 if meeting.type == 3 else 1)
+        players = Player.select() \
+            .where(peewee.fn.LOWER(Player.nickname).contains(meeting.nic.lower()) | (Player.pu_code == meeting.code)) \
+            .order_by(Player.pu_code.desc()).limit(3 if meeting.type == 3 else 1)
 
         if not players.exists():
             return message.reply_text(text='<b>Сорян, но у меня нет информации про него.</b>', parse_mode='HTML')
@@ -333,20 +365,20 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
         text = self._generate_text_profile(player)
         if text == update.telegram_update.callback_query.message.text:
             return update.telegram_update.callback_query.answer('Ну лол ты тоже самое хочешь просмотреть :)')
-        
+
         update.telegram_update.callback_query.edit_message_text(text=text, parse_mode='HTML', reply_markup=update.telegram_update.callback_query.message.reply_markup)
         update.telegram_update.callback_query.answer('Исполнил!')
 
     def _g_delta_icon(self, delta_time):
-        if delta_time > datetime.timedelta(days = 28):
+        if delta_time > datetime.timedelta(days=28):
             delta = 'Более 28 дней'
-        elif delta_time > datetime.timedelta(days = 21):
+        elif delta_time > datetime.timedelta(days=21):
             delta = 'Более 21 дня'
-        elif delta_time > datetime.timedelta(days = 14):
+        elif delta_time > datetime.timedelta(days=14):
             delta = 'Более 14 дней'
-        elif delta_time > datetime.timedelta(days = 7):
+        elif delta_time > datetime.timedelta(days=7):
             delta = 'Более 7 дней'
-        elif delta_time > datetime.timedelta(days = 3):
+        elif delta_time > datetime.timedelta(days=3):
             delta = ' Более 3 дней'
         else:
             delta = 'Менее трёх дней'
@@ -377,7 +409,7 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             if line.damage:
                 pl.attacks.append(int(line.damage))
             if line.regeneration:
-                pl.regeneration = self._regen_levels.index(searchclose(self._regen_levels, int(line.regeneration/line.damage*100)))
+                pl.regeneration = self._regen_levels.index(searchclose(self._regen_levels, int(line.regeneration / line.damage * 100)))
         for pl in pls:
             pl.max_damage = max(pl.attacks) if pl.attacks else 1
             pl.min_damage = min(pl.attacks) if pl.attacks else 1
@@ -401,7 +433,7 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
 
             pl.max_hp = pl.max_hp if pl.max_hp > player.hp else player.hp
 
-            dzen = (int(pl.max_hp / 1.2)-1550)//50
+            dzen = (int(pl.max_hp / 1.2) - 1550) // 50
             dzen = dzen + 1 if dzen >= 0 else 0
 
             player.save()
@@ -410,45 +442,48 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
                 if radar:
                     radar = radar.get()
                     if radar.time < update.date:
-                        Radar.create(player=player, time=update.date, km=update.info_line.distance, status = 0)
+                        Radar.create(player=player, time=update.date, km=update.info_line.distance, status=0)
 
-            player.add_stats( karma=player.karma,
-                                hp = pl.max_hp if pl.max_hp > player.hp else player.hp,
-                                attack = pl.median_damage if pl.median_damage > player.attack else player.attack,
-                                defence = player.defence,
-                                power = player.power,
-                                accuracy = batcoh_accuracy if batcoh_accuracy > player.accuracy else player.accuracy,
-                                oratory = player.oratory,
-                                agility = regen_agility if regen_agility > player.agility else player.agility,
-                                stamina = player.stamina,
-                                dzen = dzen if dzen > player.dzen else player.dzen,
-                                raids21=player.raids21, raid_points=player.raid_points, loose_raids=player.loose_raids, loose_weeks=player.loose_weeks,
-                                regeneration_l = pl.regeneration, batcoh_l = pl.BATCOH)
+            player.add_stats(
+                karma=player.karma,
+                hp=pl.max_hp if pl.max_hp > player.hp else player.hp,
+                attack=pl.median_damage if pl.median_damage > player.attack else player.attack,
+                defence=player.defence,
+                power=player.power,
+                accuracy=batcoh_accuracy if batcoh_accuracy > player.accuracy else player.accuracy,
+                oratory=player.oratory,
+                agility=regen_agility if regen_agility > player.agility else player.agility,
+                stamina=player.stamina,
+                dzen=dzen if dzen > player.dzen else player.dzen,
+                raids21=player.raids21, raid_points=player.raid_points, loose_raids=player.loose_raids, loose_weeks=player.loose_weeks,
+                regeneration_l=pl.regeneration, batcoh_l=pl.BATCOH
+            )
             if not created and player.last_update > update.date:
                 continue
-        
+
         if (winner and looser) and winner.is_active and looser.is_active == False:
             name = f'👨🏿‍🦰Голова {looser.nickname}'
-            item, created = Item.get_or_create(name = name, type='PEOPLE')
+            item, created = Item.get_or_create(name=name, type='PEOPLE')
             in_inventory, created = InventoryItem.get_by_item(item=item, player=winner)
             in_inventory.amount += 1
             in_inventory.last_update = update.date if created or update.date > in_inventory.last_update else in_inventory.last_update
             in_inventory.save()
             if winner.settings.pings['drop_head']:
-                self.message_manager.send_message(  chat_id=winner.telegram_user_id,
-                                                    text=f'Получено "<b>{name}</b>" за пвп от <code>{update.date}</code>',
-                                                    parse_mode='HTML')
+                self.message_manager.send_message(
+                    chat_id=winner.telegram_user_id,
+                    text=f'Получено "<b>{name}</b>" за пвп от <code>{update.date}</code>',
+                    parse_mode='HTML'
+                )
         PVP.create(
-                hash = hash_,
-                winner = winner,
-                looser = looser,
-                text = message.text_html,
-                time = update.date,
-                km = update.info_line.distance if update.info_line else None,
-                caps = update.loot.get('🕳', None) if update.loot else None,
-                mats = update.loot.get('📦', None) if update.loot else None,
-            )
-
+            hash=hash_,
+            winner=winner,
+            looser=looser,
+            text=message.text_html,
+            time=update.date,
+            km=update.info_line.distance if update.info_line else None,
+            caps=update.loot.get('🕳', None) if update.loot else None,
+            mats=update.loot.get('📦', None) if update.loot else None,
+        )
 
         if update.player.nickname == pvp.winner:
             self.message_manager.send_message(chat_id=message.chat_id, text='ГрАц!', reply_to_message_id=message.message_id)
@@ -457,8 +492,10 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
         else:
             self.message_manager.send_message(chat_id=message.chat_id, text='Сяб за информейшн, щпоня', reply_to_message_id=message.message_id)
 
-        self.message_manager.bot.forward_message(   chat_id=-1001411460180, message_id=message.message_id,
-                                                    from_chat_id=message.chat_id)
+        self.message_manager.bot.forward_message(
+            chat_id=-1001411460180, message_id=message.message_id,
+            from_chat_id=message.chat_id
+        )
 
     def _wwtop_handler(self, update: PlayerParseResult):
         message = update.telegram_update.message
@@ -479,24 +516,28 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             if stats and stats.sum_stat > pl.sum_stat:
                 continue
 
-            stats = player.add_stats(   karma=player.karma,
-                                        hp = player.hp,
-                                        attack = player.attack,
-                                        defence = player.defence,
-                                        power = player.power,
-                                        accuracy = player.accuracy,
-                                        oratory = player.oratory,
-                                        agility = player.agility,
-                                        stamina = player.stamina,
-                                        dzen = player.dzen,
-                                        raids21=player.raids21, raid_points=player.raid_points, loose_raids=player.loose_raids, loose_weeks=player.loose_weeks,
-                                        sum_stat = pl.sum_stat,
-                                        time = update.date,
-                                        regeneration_l = player.regeneration_l, batcoh_l = player.batcoh_l)
+            stats = player.add_stats(
+                karma=player.karma,
+                hp=player.hp,
+                attack=player.attack,
+                defence=player.defence,
+                power=player.power,
+                accuracy=player.accuracy,
+                oratory=player.oratory,
+                agility=player.agility,
+                stamina=player.stamina,
+                dzen=player.dzen,
+                raids21=player.raids21, raid_points=player.raid_points, loose_raids=player.loose_raids, loose_weeks=player.loose_weeks,
+                sum_stat=pl.sum_stat,
+                time=update.date,
+                regeneration_l=player.regeneration_l, batcoh_l=player.batcoh_l
+            )
 
-        self.message_manager.send_message(  chat_id=message.chat_id,
-                                            reply_to_message_id=message.message_id,
-                                            text='Спасибо, запомнил всех!')
+        self.message_manager.send_message(
+            chat_id=message.chat_id,
+            reply_to_message_id=message.message_id,
+            text='Спасибо, запомнил всех!'
+        )
 
     def _getto_handler(self, update: PlayerParseResult):
         message = update.telegram_update.message
@@ -506,21 +547,22 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             nickname, fraction, tg_id = meeting.nickname, meeting.fraction, meeting.telegram_id
             tg_user, created = TelegramUser.get_or_create(user_id=tg_id, chat_id=tg_id)
 
-            player = Player.get_or_none(telegram_user_id = tg_id)
+            player = Player.get_or_none(telegram_user_id=tg_id)
             if player and player.last_update < update.date:
                 if player.nickname != nickname:
                     message.reply_text(f'Игрок {nickname} раньше играл под ником {player.nickname}, пасиба, что сообщил)')
                 player.nickname = nickname
                 created = False
             else:
-                player, created = Player.get_or_create(nickname = nickname)
+                player, created = Player.get_or_create(nickname=nickname)
 
             if created or player.last_update < update.date:
                 player.fraction = fraction
                 player.last_update = update.date
                 player.gang = None
                 player.goat = None
-                if player.telegram_user_id != None and player.telegram_user_id != tg_id:
+
+                if player.telegram_user_id is not None and player.telegram_user_id != tg_id:
                     message.reply_text(f'В базе есть игрок {player.nickname}, но у него другой tgid => кто-то меняется никами')
 
                 player.telegram_user = tg_user
@@ -529,7 +571,7 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
                 continue
 
             delta = self._g_delta_icon(datetime.datetime.now() - player.last_update)
-            BATCOH_attack = (self._BATCOH_levels[player.batcoh_l]+100)/100*player.attack
+            batcoh_attack = (self._BATCOH_levels[player.batcoh_l] + 100) / 100 * player.attack
             text = f'👤{mention_html(player.telegram_user_id, player.nickname)}\n'
 
             if player.hp:
@@ -539,17 +581,18 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             if player.hp or player.attack:
                 text += '\n'
 
-
             if player.regeneration_l:
                 text += f'❣️{player.regeneration_l} Ур.'
             if player.batcoh_l:
-                text += f' ⚡️{int(BATCOH_attack)}'
+                text += f' ⚡️{int(batcoh_attack)}'
             if player.regeneration_l or player.batcoh_l:
                 text += '\n'
             text += f'Свежесть:{delta}\n'
 
-            self.message_manager.send_message(chat_id=message.chat_id, text=text, reply_to_message_id=message.message_id,
-                                                parse_mode='HTML')
+            self.message_manager.send_message(
+                chat_id=message.chat_id, text=text, reply_to_message_id=message.message_id,
+                parse_mode='HTML'
+            )
 
     def _dome_handler(self, update: PlayerParseResult):
         message = update.telegram_update.message
@@ -562,18 +605,20 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             } for x in update.dome.players
         ]
 
-        players_update = Player.insert(insert_fractions)\
-                                .on_conflict(
-                                                conflict_target=[Player.nickname],
-                                                update={Player.fraction: peewee.EXCLUDED.fraction},
-                                                where=((Player.fraction != peewee.EXCLUDED.fraction) & (Player.last_update <= peewee.EXCLUDED.last_update))
-                                            ).execute()
-        players = Player.select()\
-                        .where(
-                                (Player.nickname << [x.nickname for x in update.dome.players]) & \
-                                ((Player.hp != 0) | (Player.attack != 0) | (Player.dzen != 0)) & \
-                                (Player.is_active == False)
-                            )
+        players_update = Player.insert(insert_fractions) \
+            .on_conflict(
+            conflict_target=[Player.nickname],
+            update={
+                Player.fraction: peewee.EXCLUDED.fraction
+            },
+            where=((Player.fraction != peewee.EXCLUDED.fraction) & (Player.last_update <= peewee.EXCLUDED.last_update))
+        ).execute()
+        players = Player.select() \
+            .where(
+            (Player.nickname << [x.nickname for x in update.dome.players]) &
+            ((Player.hp != 0) | (Player.attack != 0) | (Player.dzen != 0)) &
+            (Player.is_active == False)
+        )
         main_text = None
         buttons = []
         for idx, player in enumerate(players, 1):
@@ -584,8 +629,6 @@ class PVPModule(BasicModule): #TODO: Полностью переработать
             main_text = '<b>It`s Купол Грома лять</b>\n\n<code>Ух ля, никого не нашёл(</code>'
         markup = InlineKeyboardMarkup(buttons) if len(buttons) > 1 else None
         self.message_manager.send_message(chat_id=update.invoker.chat_id, text=main_text, parse_mode='HTML', reply_markup=markup)
-
-
 
 # ПВП +
 # Встреча с фото +

@@ -1,22 +1,31 @@
-
 import datetime
 import re
-import json
-
 from typing import List
 
 import telegram
-from telegram.ext import MessageHandler, Dispatcher
+from telegram.ext import (
+    Dispatcher,
+    MessageHandler
+)
 from telegram.ext.filters import Filters
+
 from config import settings
-from core import EventManager, MessageManager, Update as InnerUpdate
+from core import (
+    EventManager,
+    MessageManager,
+    Update as InnerUpdate
+)
 from decorators.update import inner_update
 from decorators.users import get_player
 from modules import BasicModule
-from utils.functions import CustomFilters, clearEmoji
+from utils.functions import (
+    CustomFilters,
+    clearEmoji
+)
 from ww6StatBotWorld import Wasteland
 
-#TODO: Провести тесты всего этого добра
+
+# TODO: Провести тесты всего этого добра
 
 class PlayerStat:
     def __init__(self):
@@ -30,9 +39,11 @@ class PlayerStat:
         self.defence = None
         self.dzen = None
 
+
 class Notebook:
     def __init__(self):
         self.attrs = []
+
 
 class Profile:
     def __init__(self, match=None, id_match=None, dzen_match=None, dzen_bars_match=None):
@@ -55,8 +66,10 @@ class Profile:
             self.nickname = clearEmoji(self.nickname)
             hp, hp_now, hunger, attack, armor, power, accuracy, oratory, agility, stamina, stamina_now, distance = \
                 [int(x) for x in
-                 match.group('hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
-                             'agility', 'stamina', 'stamina_now', 'distance')]
+                 match.group(
+                     'hp', 'hp_now', 'hunger', 'attack', 'armor', 'power', 'accuracy', 'oratory',
+                     'agility', 'stamina', 'stamina_now', 'distance'
+                 )]
             self.hp_now, self.stamina_now, self.hunger, self.distance = hp_now, stamina_now, hunger, distance
             self.stats = PlayerStat()
             (self.stats.hp, self.stats.stamina, self.stats.agility, self.stats.oratory, self.stats.accuracy,
@@ -99,16 +112,22 @@ class Raid:
                 if h < 0:
                     h = 19
                     d = -1
-                date = datetime.datetime(year=fdate.year, month=fdate.month, day=fdate.day,
-                                         hour=h) + datetime.timedelta(days=d)
+                date = datetime.datetime(
+                    year=fdate.year, month=fdate.month, day=fdate.day,
+                    hour=h
+                ) + datetime.timedelta(days=d)
             elif day is None:
-                date = datetime.datetime(year=fdate.year, month=fdate.month, day=fdate.day,
-                                         hour=int(hour) % 24)
+                date = datetime.datetime(
+                    year=fdate.year, month=fdate.month, day=fdate.day,
+                    hour=int(hour) % 24
+                )
                 if fdate - date < -datetime.timedelta(seconds=1):
                     date = date - datetime.timedelta(days=1)
             else:
-                date = datetime.datetime(year=fdate.year, month=int(month), day=int(day),
-                                         hour=int(hour) % 24)
+                date = datetime.datetime(
+                    year=fdate.year, month=int(month), day=int(day),
+                    hour=int(hour) % 24
+                )
                 if fdate - date < datetime.timedelta(seconds=-1):
                     date = datetime.datetime(date.year - 1, date.month, date.day, date.hour)
 
@@ -126,46 +145,43 @@ class InfoLine:
             self.hp_now, self.stamina_now, self.hunger, self.distance = \
                 [int(x) for x in match.group('hp_now', 'stamina_now', 'hunger', 'distance')]
 
+
 class PVPDrone:
     name: str
-    damage: int
-    defence: int
+    damage: int | None
+    defence: int | None
 
     def __init__(self):
         self.name = '/ДРОН/'
         self.damage = self.defence = None
 
+
 class PVPLine:
-    player: str
-    health: int
-    damage: int
-    regeneration: int
+    def __init__(self, player: str, health: int, damage: int, regeneration: int, drone: PVPDrone | None):
+        self.player = player
+        self.health = health
+        self.damage = damage
+        self.regeneration = regeneration
+        self.drone = drone
 
-    drone: PVPDrone
-
-    def __init__(self, match = None):
-        self.player = self.health = self.damage = self.regeneration = self.drone = None
 
 class PVP:
-    winner: str
-    looser: str
-    pvp_lines: List[PVPLine]
-
-    loose_text: str
-    def __init__(self):
-        self.pvp_lines = []
-        self.winner = self.looser = self.loose_text = None
+    def __init__(self, winner: str, looser: str, pvp_lines: List[PVPLine], loose_text: str):
+        self.winner = winner
+        self.looser = looser
+        self.pvp_lines = pvp_lines
+        self.loose_text = loose_text
 
     def __str__(self):
         text = (
-                f'ПВП Между {self.winner} и {self.looser}\n'
-                f'Колличество действий: {len(self.pvp_lines)}\n'
-            )
+            f'ПВП Между {self.winner} и {self.looser}\n'
+            f'Колличество действий: {len(self.pvp_lines)}\n'
+        )
         for line in self.pvp_lines:
             if not line.drone:
                 text += f'[{line.health}]{line.player} атакует сопперника ({line.damage})\n'
                 if line.regeneration:
-                    text += f'[{line.health+line.regeneration}]{line.player} регенерирует {line.regeneration}\n'
+                    text += f'[{line.health + line.regeneration}]{line.player} регенерирует {line.regeneration}\n'
             else:
                 if line.drone.damage:
                     text += f'{line.player} ( {line.drone.name} ) атакует на {line.damage}\n'
@@ -190,11 +206,13 @@ class Meeting:
         self.goat = None
         self.gang = None
         self.code = None
+
     def __str__(self):
         return f'[{self.fraction}]{self.nic} ({self.goat}; {self.gang}) #{self.code}'
 
+
 class GettoPlayer:
-    def __init__(self, match = None):
+    def __init__(self, match=None):
         if not match:
             self.fraction = None
             self.nickname = None
@@ -207,6 +225,7 @@ class GettoPlayer:
     def __str__(self):
         return f'[{self.fraction}]{self.nickname} - {self.telegram_id}'
 
+
 class ViewPlayer:
     def __init__(self, match=None):
         if not match:
@@ -215,14 +234,18 @@ class ViewPlayer:
             self.u_command = None
         else:
             self.nickname, self.u_command = \
-                        match.group('nickname', 'u_command')
+                match.group('nickname', 'u_command')
             self.nickname = clearEmoji(self.nickname)
             self.fraction = Wasteland.fractions_by_icon.get(match.group('fraction'), 'ww')
+
     def __str__(self):
         return f'[{self.fraction}] {self.nickname} ({self.u_command})'
+
+
 class View:
     km: int
     players: List[ViewPlayer]
+
     def __init__(self, match):
         if not match:
             self.km = 0
@@ -232,16 +255,19 @@ class View:
 
     def __str__(self):
         players = '\n'.join([str(x) for x in self.players])
-        return f'View {km}км:\n{players}'
+        return f'View {self.km}км:\n{players}'
+
 
 class PlayerDistance:
     nickname: str
     km: int
+
     def __init__(self, nickname=None, km=None):
         self.nickname, self.km = clearEmoji(nickname), km
 
     def __str__(self):
         return f'{self.nickname}({self.km}км)'
+
 
 class SumStatPlayer:
     nickname: str
@@ -257,6 +283,7 @@ class SumStatPlayer:
             self.nickname = clearEmoji(m.group('nickname'))
             self.sum_stat = int(m.group('sum_stat'))
             self.fraction = Wasteland.fractions_by_icon.get(m.group('fraction'), 'ww')
+
     def __str__(self):
         return f'[{self.fraction}]{self.nickname} - {self.sum_stat}'
 
@@ -269,33 +296,43 @@ class SumStatTop:
 
     def __str__(self):
         return (
-                    f'Топ игроков по БМ ( {len(self.players)}ч. )\n'
-                    '\n'.join([f'{idx}. [{x.fraction}]{x.nickname} - {x.sum_stat}' for x in self.players])
-                )
+            f'Топ игроков по БМ ( {len(self.players)}ч. )\n'
+            '\n'.join([
+                f'{idx}. [{x.fraction}]{x.nickname} - {x.sum_stat}'
+                for idx, x in enumerate(self.players, 1)
+            ])
+        )
+
+
 class TakingDunge:
     km: int
     gang: str
     players: List[PlayerDistance]
+
     def __init__(self, gang=None, km=0):
         self.gang, self.km = gang, km
         self.players = []
+
     def __str__(self):
         return (
-                    f'Захват {self.km} группой {self.gang}\n'
-                    f'Игроки: {"; ".join([str(x) for x in self.players])}'
-                )
-class TakingSuccess:
-        gang_name: str
-        location_name: str
+            f'Захват {self.km} группой {self.gang}\n'
+            f'Игроки: {"; ".join([str(x) for x in self.players])}'
+        )
 
-        def __init__(self, match = None):
-            if not match:
-                self.gang_name, self.location_name = '[отсутствует]', '[подземелье]'
-            else:
-                self.gang_name, self.location_name = match.group('gang_name', 'location_name')
-        
-        def __str__(self):
-            return f'Захват {self.location_name} группой {self.gang_name} удался'
+
+class TakingSuccess:
+    gang_name: str
+    location_name: str
+
+    def __init__(self, match=None):
+        if not match:
+            self.gang_name, self.location_name = '[отсутствует]', '[подземелье]'
+        else:
+            self.gang_name, self.location_name = match.group('gang_name', 'location_name')
+
+    def __str__(self):
+        return f'Захват {self.location_name} группой {self.gang_name} удался'
+
 
 class PokemobDead:
     mob_name: str
@@ -304,6 +341,7 @@ class PokemobDead:
 
     def __init__(self, mob_name: str, dead_text: str, nickname: str):
         self.mob_name, self.dead_text, self.nickname = mob_name, dead_text, nickname
+
 
 class DomePlayer:
     nickname: str
@@ -321,6 +359,7 @@ class DomePlayer:
     def __str__(self):
         return f'({self.fraction}) {self.nickname} из {self.gang if self.gang else "(Без банды)"}'
 
+
 class Dome:
     players: List[DomePlayer]
 
@@ -331,19 +370,24 @@ class Dome:
         players = '\n'.join([str(x) for x in self.players])
         return f'Купол грома:\n{players}'
 
+
 class StockItem:
     name: str
     amount: int
-    category: str 
+    category: str
+
     def __init__(self, name: str = '', amount: int = 0, category: str = ''):
         self.name, self.amount, self.category = name, amount, category
+
 
 class Boss:
     name: str
     hp: int
     attacks: List[int]
 
-    def __init__(self, name: str = None, hp: int = 0, attacks: List[int] = []):
+    def __init__(self, name: str = None, hp: int = 0, attacks=None):
+        if attacks is None:
+            attacks = []
         self.name, self.hp, self.attacks = name, hp, attacks
 
     def __bool__(self):
@@ -351,11 +395,12 @@ class Boss:
 
     def __str__(self):
         return (
-                f'Босс: {self.name}\n'
-                f'❤️Здоровье: {self.hp}\n'
-                f'⚔️Атаки: {"; ".join([str(x) for x in self.attacks])}'
-                f'⚔️Суммарный урон: {sum(self.attacks)}'
-            )
+            f'Босс: {self.name}\n'
+            f'❤️Здоровье: {self.hp}\n'
+            f'⚔️Атаки: {"; ".join([str(x) for x in self.attacks])}'
+            f'⚔️Суммарный урон: {sum(self.attacks)}'
+        )
+
 
 class BossFightPlayer:
     nickname: str
@@ -371,29 +416,31 @@ class BossFightPlayer:
 
     def __str__(self):
         return (
-                f'Игрок: {self.nickname}\n'
-                f'❤️Здоровье: {self.hp}\n'
-                f'⚔️Атаки: {"; ".join([str(x) for x in self.attacks])}\n'
-                f'⚔️Пропущенные атаки: {"; ".join([str(x) for x in self.loose_attacks])}\n'
-                f'⚔️Суммарный урон: {sum(self.attacks)}\n'
-                f'⚔️Суммарный пропущенный урон: {sum(self.loose_attacks)}'
-            )
+            f'Игрок: {self.nickname}\n'
+            f'❤️Здоровье: {self.hp}\n'
+            f'⚔️Атаки: {"; ".join([str(x) for x in self.attacks])}\n'
+            f'⚔️Пропущенные атаки: {"; ".join([str(x) for x in self.loose_attacks])}\n'
+            f'⚔️Суммарный урон: {sum(self.attacks)}\n'
+            f'⚔️Суммарный пропущенный урон: {sum(self.loose_attacks)}'
+        )
+
 
 class BossFight:
     boss: Boss
     players: List[BossFightPlayer]
 
-    def __init__(self, boss: Boss, players: BossFightPlayer):
+    def __init__(self, boss: Boss, players: list[BossFightPlayer]):
         self.boss = boss
         self.players = players
 
     def __str__(self):
         return f'{self.boss}\n\n' + '\n\n'.join([str(x) for x in self.players])
 
+
 class Scuffle:
     winner: str
     winner_fraction: str
-    
+
     dead_text: str
 
     looser: str
@@ -415,6 +462,8 @@ class Scuffle:
 class PlayerParseResult(InnerUpdate):
     def __init__(self, update: telegram.Update):
         super().__init__(update)
+        self.view = None
+        self.sum_stat_top = None
         self.raid = None
         self.profile = None
         self.info_line = None
@@ -426,7 +475,7 @@ class PlayerParseResult(InnerUpdate):
         self.getto = None
         self.distance = None
 
-        self.stock = None #List[StockItem]
+        self.stock = None  # List[StockItem]
         self.dome = None
 
 
@@ -491,6 +540,7 @@ class GroupParseResult(InnerUpdate):
         self.gang = None
         self.goat = None
 
+
 class ParserModule(BasicModule):
     """
     responds to forwards in group 1 (not default 10 and not activity 0)
@@ -506,41 +556,45 @@ class ParserModule(BasicModule):
         super().__init__(event_manager, message_manager, dispatcher)
 
         self.raid_format = re.compile(
-            r'(Рейд[\s]+(?P<msg>в[\s]+((?P<hour>[\d]+)|([-]+)):[\d]+[\s]*((?P<day>[\d]+)\.(?P<month>[\d]+))?'
+            r'(Рейд\s+(?P<msg>в\s+((?P<hour>\d+)|(-+)):\d+\s*((?P<day>\d+)\.(?P<month>\d+))?'
             r'.*\n.*\n.*))'
         )
 
-        self.re_profile = re.compile(r'\n(?P<nic>[^\n]*),[\s]*(?P<fraction>[^\n]*)[\s]+'
-                                     r'(🤟Банда:\s+(?P<crew>[^\n]*)\s+)?'
-                                     r'❤️Здоровье:[\s]+(?P<hp_now>[\d]+)/(?P<hp>[\d]+)[\s]+'
-                                     r'☠️Голод:[\s]+(?P<hunger>[\d]+)%[\s]*/myfood[\s]+'
-                                     r'⚔️Урон:[\s]+(?P<attack>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'🛡Броня:[\s]+(?P<armor>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'💪Сила:[\s]+(?P<power>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'🎯Меткость:[\s]+(?P<accuracy>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'🗣Харизма:[\s]+(?P<oratory>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'🤸🏽‍♂️Ловкость:[\s]+(?P<agility>[\d]+)([\s]*\([^)]*\))?[\s]*'
-                                     r'(?:💡Умения /perks\s+)?'
-                                     r'🔋Выносливость:[\s]+(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[\s]*/ref[\s]+'
-                                     r'📍(?P<location>[^\n]*),[\s]*👣[\s]*(?P<distance>[\d]+)км\.\s*(?P<on_raid>👊)?'
-                                     )
+        self.re_profile = re.compile(
+            r'\n(?P<nic>[^\n]*),\s*(?P<fraction>[^\n]*)\s+'
+            r'(🤟Банда:\s+(?P<crew>[^\n]*)\s+)?'
+            r'❤️Здоровье:\s+(?P<hp_now>\d+)/(?P<hp>\d+)\s+'
+            r'☠️Голод:\s+(?P<hunger>\d+)%\s*/myfood\s+'
+            r'⚔️Урон:\s+(?P<attack>\d+)(\s*\([^)]*\))?\s*'
+            r'🛡Броня:\s+(?P<armor>\d+)(\s*\([^)]*\))?\s*'
+            r'💪Сила:\s+(?P<power>\d+)(\s*\([^)]*\))?\s*'
+            r'🎯Меткость:\s+(?P<accuracy>\d+)(\s*\([^)]*\))?\s*'
+            r'🗣Харизма:\s+(?P<oratory>\d+)(\s*\([^)]*\))?\s*'
+            r'🤸🏽‍♂️Ловкость:\s+(?P<agility>\d+)(\s*\([^)]*\))?\s*'
+            r'(?:💡Умения /perks\s+)?'
+            r'🔋Выносливость:\s+(?P<stamina_now>\d+)/(?P<stamina>\d+)\s*/ref\s+'
+            r'📍(?P<location>[^\n]*),\s*👣\s*(?P<distance>\d+)км\.\s*(?P<on_raid>👊)?'
+        )
 
         self.re_profile_short = re.compile(
-            r'👤(?P<nic>[^\n]*?)(?:(?P<dzen>[🏵\d+|🏵+]*))?\n'
+            r'👤(?P<nic>[^\n]*?)(?:(?P<dzen>[🏵\d+|🏵]*))?\n'
             r'├🤟 (?P<crew>[^\n]*)\n'
             r'├(?P<fraction>[^\n]*)\n'
-            r'├❤️(?P<hp_now>[\d]+)/(?P<hp>[\d]+)[^\d]+(?P<hunger>[\d]+)[^\d]+'
-            r'(?P<attack>[\d]+)[^\d]+[^\d]*(?P<armor>[\d]+)[^\d]+'
-            r'(?P<power>[\d]+)[^\d]+[^\d]*(?P<accuracy>[\d]+)[^\d]+'
-            r'(?P<oratory>[\d]+)[^\d]+(?P<agility>[\d]+)[^\d]+'
-            r'(?P<stamina_now>[\d]+)/(?P<stamina>[\d]+)[^\d]+'
-            r'👣(?P<distance>[\d]+)\n├🔥(?P<location>[^\n]+)')
-        
+            r'├❤️(?P<hp_now>\d+)/(?P<hp>\d+)\D+(?P<hunger>\d+)\D+'
+            r'(?P<attack>\d+)\D+\D*(?P<armor>\d+)\D+'
+            r'(?P<power>\d+)\D+\D*(?P<accuracy>\d+)\D+'
+            r'(?P<oratory>\d+)\D+(?P<agility>\d+)\D+'
+            r'(?P<stamina_now>\d+)/(?P<stamina>\d+)\D+'
+            r'👣(?P<distance>\d+)\n├🔥(?P<location>[^\n]+)'
+        )
+
         self.re_id = re.compile(r'ID(\d+)')
         self.re_dzen = re.compile(r'(🏵(\d+)|🏵+)')
         self.re_dzen_bars = re.compile(r'[▓░]')
-        self.re_info_line = re.compile(r'❤️(?P<hp_now>-?\d+)\\(?P<hp>\d+)\s*🍗(?P<hunger>\d+)%\s*'
-                                       r'🔋(?P<stamina_now>\d+)\\(?P<stamina>\d+)\s*👣(?P<distance>\d+)км')
+        self.re_info_line = re.compile(
+            r'❤️(?P<hp_now>-?\d+)\\(?P<hp>\d+)\s*🍗(?P<hunger>\d+)%\s*'
+            r'🔋(?P<stamina_now>\d+)\\(?P<stamina>\d+)\s*👣(?P<distance>\d+)км'
+        )
 
         self.re_pve = re.compile(r'Сражение с\s*(?P<mob>.*)')
         self.re_pve_win = re.compile('Ты одержал победу!')
@@ -561,8 +615,10 @@ class ParserModule(BasicModule):
         self.re_friend = re.compile(r'знакомый:\s+👤(?P<nickname>.+)\s+из\s+(?P<fraction>{})!'.format(fractions))
         self.re_maniak = re.compile(r'\nЭто (?P<nic>.*) из (?P<fraction>' + fractions + ')')
         self.re_player_in_brackets = re.compile(r'(?P<nic>.*)\((?P<fraction>' + fractions + r')\)')
-        self.re_duel = re.compile(  r'👤(?P<nickname>.+)\s+из\s+(?P<fraction>' + fractions + r')\s*'
-                                    r'(🤘(?P<gang>.+)\s+)?')
+        self.re_duel = re.compile(
+            r'👤(?P<nickname>.+)\s+из\s+(?P<fraction>' + fractions + r')\s*'
+                                                                    r'(🤘(?P<gang>.+)\s+)?'
+            )
 
         self.re_getto = re.compile(r'Игроки в белом гетто')
 
@@ -577,42 +633,56 @@ class ParserModule(BasicModule):
                              ]
         self.re_raid_msg_default = re.compile(r'🕳\s*\+(\d+)\s*📦\s*\+(\d+)\s*(.*)')
 
-        self.re_goat = re.compile(r'🐐\s*(?P<name>.+)[\s\S]*'
-                                  r'🏅\s*Уровень:\s*(?P<goat_level>\d+)\s*'
-                                  r'🚩Лига:\s*(?P<league>.+)\s*'
-                                  r'🏆\s*Рейтинг:\s*(?P<goat_rate>\d+)\s*'
-                                  r'Лидер\s*⚜️\s*(?P<commander>.+)\s*'
-                                  r'Банды-участники \(\d/\d\)\s*'
-                                  r'(?P<gangs>[\s\S]+)\s*'
-                                  r'Штаб козла[\s\S]+')
+        self.re_goat = re.compile(
+            r'🐐\s*(?P<name>.+)[\s\S]*'
+            r'🏅\s*Уровень:\s*(?P<goat_level>\d+)\s*'
+            r'🚩Лига:\s*(?P<league>.+)\s*'
+            r'🏆\s*Рейтинг:\s*(?P<goat_rate>\d+)\s*'
+            r'Лидер\s*⚜️\s*(?P<commander>.+)\s*'
+            r'Банды-участники \(\d/\d\)\s*'
+            r'(?P<gangs>[\s\S]+)\s*'
+            r'Штаб козла[\s\S]+'
+        )
         _frac_icons = '|'.join(f'({i})' for i in Wasteland.fractions_by_icon)
         self.re_dome = re.compile(r'\((?P<fraction>{})\)\s(?P<nickname>.+)\s+(🤘(?P<gang>.+)|\(Без банды\))'.format(_frac_icons))
 
-        self.re_player_in_gang = re.compile(r'(?P<idx>(🥇)|(🥈)|(🥉)|(\d+\.))\s(?P<nickname>.+)\s*'
-                                            r'👂(?P<ears>\d+)\s+(?P<status>[📍👟👊])(?P<distance>\d+)km'.format(_frac_icons))
-        self.re_gang = re.compile(r'🤘\s*(?P<name>.+)\s+🏅\d+[\s\S]*'
-                                  r'Панель банды\.\s+'
-                                  r'Главарь\s*⚜️\s*(?P<commander>.+)\s*'
-                                  r'Козёл\s*'
-                                  r'🐐\s*(?P<goat>.+) /goat\s*')
+        self.re_player_in_gang = re.compile(
+            r'(?P<idx>(🥇)|(🥈)|(🥉)|(\d+\.))\s(?P<nickname>.+)\s*'
+            r'👂(?P<ears>\d+)\s+(?P<status>[📍👟👊])(?P<distance>\d+)km'.format(_frac_icons)
+        )
+        self.re_gang = re.compile(
+            r'🤘\s*(?P<name>.+)\s+🏅\d+[\s\S]*'
+            r'Панель банды\.\s+'
+            r'Главарь\s*⚜️\s*(?P<commander>.+)\s*'
+            r'Козёл\s*'
+            r'🐐\s*(?P<goat>.+) /goat\s*'
+        )
         self.re_gang_in_goat = re.compile(r'(?P<idx>(🥇)|(🥈)|(🥉)|(\d+\.))\s*🤘(?P<gang>.+)\s+💥(?P<power>\d+)\s+(🔐|/gcr_\d+)')
         self.re_view = re.compile(r'[🚷👣]\s*(?P<km>\d+)\s+км.')
-        self.re_view_line = re.compile(r'((?P<fraction>{})(?P<nickname>.*)\s+\|\s+👤\/u_(?P<u_command>.*));'.format(_frac_icons))
-        self.re_meeting_photo_line_drone = re.compile(r'(?P<fraction>{})\s*(?P<nic>.+)\s+(и\s+его\s+(?P<drone>.+).)\s*'
-                                                      r'(🐐(?P<goat>.+)\s+)?🤘(?P<gang>.+)\s*(⚔️\s+/p_(?P<code>.+))?'.format(_frac_icons))
-        self.re_meeting_photo_line = re.compile(r'(?P<fraction>{})\s*(?P<nic>.+)\s*'
-                                                r'(🐐(?P<goat>.+)\s+)?🤘(?P<gang>.+)\s*(⚔️\s+/p_(?P<code>.+))?'.format(_frac_icons))
-        
-        self.re_taking = re.compile(r'\s*✊️Захват\s+(?P<location_name>.+)[\s]*'
-                                    r'\s*🤘(?P<gang>.*)')
-        self.re_taking_gansters_final = re.compile(r'👊(?P<nickname>.+)\s(❤️|☠️)\d+\/(?P<hp>\d+)')
+        self.re_view_line = re.compile(r'((?P<fraction>{})(?P<nickname>.*)\s+\|\s+👤/u_(?P<u_command>.*));'.format(_frac_icons))
+        self.re_meeting_photo_line_drone = re.compile(
+            r'(?P<fraction>{})\s*(?P<nic>.+)\s+(и\s+его\s+(?P<drone>.+).)\s*'
+            r'(🐐(?P<goat>.+)\s+)?🤘(?P<gang>.+)\s*(⚔️\s+/p_(?P<code>.+))?'.format(_frac_icons)
+        )
+        self.re_meeting_photo_line = re.compile(
+            r'(?P<fraction>{})\s*(?P<nic>.+)\s*'
+            r'(🐐(?P<goat>.+)\s+)?🤘(?P<gang>.+)\s*(⚔️\s+/p_(?P<code>.+))?'.format(_frac_icons)
+        )
+
+        self.re_taking = re.compile(
+            r'\s*✊️Захват\s+(?P<location_name>.+)\s*'
+            r'\s*🤘(?P<gang>.*)'
+        )
+        self.re_taking_gansters_final = re.compile(r'👊(?P<nickname>.+)\s(❤️|☠️)\d+/(?P<hp>\d+)')
         self.re_taking_gansters = re.compile(r'👊(?P<nickname>.+)')
         self.re_taking_fail = re.compile(r'[\s\S]+Захват\s+провален\.[\s\S]+')
         self.re_taking_success = re.compile(r'(?P<location_name>.+)\s+теперь\s+под\s+контролем\s+🤘(?P<gang_name>.+)!')
 
         self.re_sum_stat_top = re.compile(r'[\s\S]*🏆ТОП\s*ИГРОКОВ:[\s\S]*')
-        self.re_sum_stat_top_players = re.compile(  r'(?P<position>\d+).\s+(?P<nickname>.+)\s+\[(?P<fraction>{})\]\s*'
-                                            r'Счет:\s*(?P<sum_stat>\d+)\s*'.format(_frac_icons))
+        self.re_sum_stat_top_players = re.compile(
+            r'(?P<position>\d+).\s+(?P<nickname>.+)\s+\[(?P<fraction>{})]\s*'
+            r'Счет:\s*(?P<sum_stat>\d+)\s*'.format(_frac_icons)
+        )
 
         self.re_notebook = re.compile(r'[\s\S]*ДНЕВНИК ВЫЖИВАНИЯ[\s\S]*')
         self.re_notebook_line = re.compile(r'(?P<name>.+)\s+(?P<value>\d+)(?P<name2>.*);')
@@ -625,48 +695,65 @@ class ParserModule(BasicModule):
         self.drugs = {'Холодное пиво', 'Виски', 'Бурбон', 'Абсент', 'Глюконавт', 'Психонавт', 'Ментаты', 'Психо',
                       'Винт', 'Ультравинт', 'Скума'}
 
-        self._n_re_pvp =  (
-                            r'<b>.+</b> из <b>(?P<fraction1>.+)</b>\n'
-                            r'<code>VS\.</code>\n'
-                            r'<b>.+</b>\s+из <b>(?P<fraction2>.+)</b>\n'
-                            r'<code>FIGHT!</code>\n\n'
-                            r'(?P<pvp_lines>[\s\S]+)\n\n'
-                            r'(?P<winner>(?P<winner_spases>\s*)<b>(?P<winner_text>.+)</b>)\s+(?P<dead_text>.+)\s(?P<looser>(?P<looser_spases>\s*)<b>(?P<looser_text>.+)</b>)'
-                        )
-                                    
-        self._n_re_pvp_drone_defence = re.compile(r'🛰<b>(?P<drone_name>.+)</b>\s+принял\s+на\s+себя\s+удар\s+от\s(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+🛡<code>-(?P<defence>\d+)</code>')
-        self._n_re_pvp_drone_attack = re.compile(r'🛰<b>(?P<drone_name>.+)</b>\s+атаковал\s(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+<code>💥(?P<damage>\d+)</code>')
-        self._n_re_pvp_base_attack = re.compile(r'❤️<code>(?P<hp>\d+)\s+</code>(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+(?P<text>.+)\s+<code>\(💥(?P<damage>\d+)\)</code>(⚡️)?(\s+❣️(?P<regen>\d+))?')
-        self._n_re_pvp_loose_line = re.compile(r'❤️<code>(?P<hp>\d+)\s+</code>(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+(?P<text>.+)\s+<code>\(💔(?P<damage>\d+)\)</code>')
+        self._n_re_pvp = (
+            r'<b>.+</b> из <b>(?P<fraction1>.+)</b>\n'
+            r'<code>VS\.</code>\n'
+            r'<b>.+</b>\s+из <b>(?P<fraction2>.+)</b>\n'
+            r'<code>FIGHT!</code>\n\n'
+            r'(?P<pvp_lines>[\s\S]+)\n\n'
+            r'(?P<winner>(?P<winner_spases>\s*)<b>(?P<winner_text>.+)</b>)\s+(?P<dead_text>.+)\s(?P<looser>(?P<looser_spases>\s*)<b>(?P<looser_text>.+)</b>)'
+        )
+
+        self._n_re_pvp_drone_defence = re.compile(
+            r'🛰<b>(?P<drone_name>.+)</b>\s+принял\s+на\s+себя\s+удар\s+от\s(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+🛡<code>-(?P<defence>\d+)</code>'
+        )
+        self._n_re_pvp_drone_attack = re.compile(
+            r'🛰<b>(?P<drone_name>.+)</b>\s+атаковал\s(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+<code>💥(?P<damage>\d+)</code>'
+        )
+        self._n_re_pvp_base_attack = re.compile(
+            r'❤️<code>(?P<hp>\d+)\s+</code>(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+(?P<text>.+)\s+<code>\(💥(?P<damage>\d+)\)</code>(⚡️)?(\s+❣️(?P<regen>\d+))?'
+        )
+        self._n_re_pvp_loose_line = re.compile(
+            r'❤️<code>(?P<hp>\d+)\s+</code>(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+(?P<text>.+)\s+<code>\(💔(?P<damage>\d+)\)</code>'
+        )
         self._n_re_pvp_insight = re.compile(r'❤️<code>(?P<hp>\d+)\s+</code>(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+увернулся\s+🌀')
 
-        self._re_player_in_getto = re.compile(  r'👤(?P<nickname>.+)\s+\((?P<fraction>.+)\)\s+'
-                                                r'🤘\(Без банды\)\s+'
-                                                r'/inv_(?P<tguser_id>\d+)')
+        self._re_player_in_getto = re.compile(
+            r'👤(?P<nickname>.+)\s+\((?P<fraction>.+)\)\s+'
+            r'🤘\(Без банды\)\s+'
+            r'/inv_(?P<tguser_id>\d+)'
+        )
         self._re_raid_voevat_answer = re.compile(
-                                                r'Ты занял позицию для 👊Рейда и приготовился к групповому сражению козлов\.'
-                                                r'Рейд начнётся через ⏱(?P<last_time>.+)\.'
-            )
+            r'Ты занял позицию для 👊Рейда и приготовился к групповому сражению козлов\.'
+            r'Рейд начнётся через ⏱(?P<last_time>.+)\.'
+        )
         self._re_raid_voevat_answer_time = re.compile(r'((?P<hours>\d+)ч\.)?\s*((?P<minutes>\d+)\s*мин)?((?P<seconds>\d+)\s*сек)?')
-        
-        self._re_stock_item = re.compile(r'▫️\s+(?P<name>.+)\s+(\((?P<amount>\d+)\))?\s+\/(?P<command>.+)')
-        self._re_food_item = re.compile(r'▪️\s+(?P<name>.+)\s+(\((?P<amount>\d+)\))?\s+\/(?P<command>.+)')
+
+        self._re_stock_item = re.compile(r'▫️\s+(?P<name>.+)\s+(\((?P<amount>\d+)\))?\s+/(?P<command>.+)')
+        self._re_food_item = re.compile(r'▪️\s+(?P<name>.+)\s+(\((?P<amount>\d+)\))?\s+/(?P<command>.+)')
         self._re_resource_item = re.compile(r'▫️\s+(?P<name>.+)\s+(\((?P<amount>\d+)\))?\s+')
 
-        self._re_stuff_items = re.compile(r'Хлам\s+(?P<stuff>[\s\S]+)🗃Припасы\s+\/myfood')
+        self._re_stuff_items = re.compile(r'Хлам\s+(?P<stuff>[\s\S]+)🗃Припасы\s+/myfood')
         self._re_stuff_item = re.compile(r'(?P<name>[^,()]+)(\((?P<amount>\d+)\))?')
 
         self._re_boss_part = re.compile(
-                                        r'(?P<boss_name>.+)\s❤️(?P<boss_hp>-?\d+)\n'
-                                        r'(?P<fight>[\s\S]+)'
-                                    )
+            r'(?P<boss_name>.+)\s❤️(?P<boss_hp>-?\d+)\n'
+            r'(?P<fight>[\s\S]+)'
+        )
         self._re_boss_player_attack = re.compile(r'(?P<nickname>.+)\s💥(?P<damage>-?\d+)')
         self._re_boss_attack = re.compile(r'(?P<nickname>.+)\s💔-(?P<boss_damage>\d+)')
         self._re_boss_player_dead = re.compile(r'(?P<nickname>.+)\s☠️')
-        self._re_pokemob_dead = re.compile(r'(?P<fraction>{})\s(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+(?P<dead_text>.+)\s<i>(?P<mob_name>.+)</i>'.format(_frac_icons))
-        self._re_scuffle = re.compile(r'(?P<winner_fraction>{})\s(?P<winner>(?P<winner_spases>\s*)<b>(?P<winner_text>.+)</b>)\s+(?P<dead_text>.+)\s(?P<looser_fraction>{})(?P<looser>(?P<looser_spases>\s*)<b>(?P<looser_text>.+)</b>)'.format(_frac_icons, _frac_icons))
+        self._re_pokemob_dead = re.compile(
+            r'(?P<fraction>{})\s(?P<nickname>(?P<nickname_spases>\s*)<b>(?P<nickname_text>.+)</b>)\s+(?P<dead_text>.+)\s<i>(?P<mob_name>.+)</i>'.format(_frac_icons)
+        )
+        self._re_scuffle = re.compile(
+            r'(?P<winner_fraction>{})\s(?P<winner>(?P<winner_spases>\s*)<b>(?P<winner_text>.+)</b>)\s+(?P<dead_text>.+)\s(?P<looser_fraction>{})(?P<looser>(?P<looser_spases>\s*)<b>(?P<looser_text>.+)</b>)'.format(
+                _frac_icons,
+                _frac_icons
+            )
+        )
         self._re_lynch = re.compile(r'(?P<fraction>' + _frac_icons + r')\s(?P<nickname>.+)\s{2}👥(?P<recorded>\d)/(?P<total>\d)\s+/gomaniac_(?P<user_id>\d+)')
-    
+
     def _parse_boss_fight(self, message: telegram.Message, pr: PlayerParseResult):
         text = message.text or ''
         if not text.startswith('ХОД БИТВЫ:'):
@@ -711,10 +798,14 @@ class ParserModule(BasicModule):
                     boss.attacks.append(boss_damage)
                     player.hp += boss_damage
                 elif player_dead:
-                    player.hp -= player.loose_attacks[len(player.loose_attacks)-1] - 1
+                    player.hp -= player.loose_attacks[len(player.loose_attacks) - 1] - 1
                 else:
                     continue
-                players.update({nickname: player})
+                players.update(
+                    {
+                        nickname: player
+                    }
+                )
         if not boss:
             return
         pr.boss_fight = BossFight(boss=boss, players=list(players.values()))
@@ -847,7 +938,7 @@ class ParserModule(BasicModule):
                 pr.loot[loot] = k
 
     def _parse_pvp(self, message: telegram.Message, pr: PlayerParseResult):
-        text = message.text_html or '' #TODO: работать с HTML текстом ( message.text_html )
+        text = message.text_html or ''  # TODO: работать с HTML текстом ( message.text_html )
 
         re_ = self._n_re_pvp
         if 'ушел победителем из этой схватки.' in text:
@@ -855,16 +946,16 @@ class ParserModule(BasicModule):
         re_ = re.compile(re_)
 
         match = re_.search(text)
-        
+
         if not match:
             return
 
         # nics = list(match.group('winner', 'looser'))
         nics = [''.join(match.group(f'{prefix}_spases', f'{prefix}_text')) for prefix in ['winner', 'looser']]
-        pvp_lines = match.group('pvp_lines')
+        pvp_lines_text = match.group('pvp_lines')
 
-        pvp = PVP()
-        for idx, line in enumerate(pvp_lines.split('\n')):
+        pvp_lines = []
+        for idx, line in enumerate(pvp_lines_text.split('\n')):
             pvp_attack = self._n_re_pvp_base_attack.search(line)
             loose_line = self._n_re_pvp_loose_line.search(line)
             pvp_insight = self._n_re_pvp_insight.search(line)
@@ -903,17 +994,22 @@ class ParserModule(BasicModule):
                 attack = None
             else:
                 continue
-            pvpLine = PVPLine()
-            pvpLine.player = nickname
-            pvpLine.health = hp
-            pvpLine.damage = attack
-            pvpLine.regeneration = regen
-            pvpLine.drone = drone
-            pvp.pvp_lines.append(pvpLine)
 
-        pvp.winner, pvp.looser = [''.join(match.group(f'{prefix}_spases', f'{prefix}_text')) for prefix in ['winner', 'looser']]
-        pvp.loose_text = match.group('dead_text')
-        pr.pvp = pvp
+            pvp_lines.append(PVPLine(
+                player=nickname,
+                health=hp,
+                damage=attack,
+                regeneration=regen,
+                drone=drone
+            ))
+
+        winner, looser = (''.join(match.group(f'{prefix}_spases', f'{prefix}_text')) for prefix in ['winner', 'looser'])
+        pr.pvp = PVP(
+            winner=winner,
+            looser=looser,
+            pvp_lines=pvp_lines,
+            loose_text=match.group('dead_text')
+        )
 
     def _parse_forward(self, message: telegram.Message, pr: PlayerParseResult):
         text = message.text or ''
@@ -1023,7 +1119,7 @@ class ParserModule(BasicModule):
         match = self.re_taking_success.search(text)
         if not match:
             return
-        pr.taking_success = TakingSuccess(match = match)
+        pr.taking_success = TakingSuccess(match=match)
 
     def _parse_sum_stat_top(self, msg: telegram.Message, pr: PlayerParseResult):
         match = self.re_sum_stat_top.match(msg.text)
@@ -1124,9 +1220,10 @@ class ParserModule(BasicModule):
         pr.meeting.type = 3
 
     def _photo_forward(self, msg: telegram.Message, pr: PlayerParseResult):
-        self.message_manager.bot.forward_message(chat_id=settings.UNKOWN_CHAT_ID, message_id=pr.telegram_update.message.message_id,
-                                                from_chat_id=pr.telegram_update.message.chat_id)
-
+        self.message_manager.bot.forward_message(
+            chat_id=settings.UNKOWN_CHAT_ID, message_id=pr.telegram_update.message.message_id,
+            from_chat_id=pr.telegram_update.message.chat_id
+        )
 
     @inner_update(PlayerParseResult)
     @get_player
@@ -1139,7 +1236,7 @@ class ParserModule(BasicModule):
 
         self._parse_info_line(msg, player_info_parsed)
         self._parse_forward(msg, player_info_parsed)
-            
+
         self._parse_raid(msg, player_info_parsed)
         self._parse_pve(msg, player_info_parsed)
         self._parse_loot(msg, player_info_parsed)
@@ -1173,6 +1270,6 @@ class ParserModule(BasicModule):
         player_info_parsed = update
         msg = update.telegram_update.message
 
-        self._photo_meeting(msg, player_info_parsed)   
-        self._photo_forward(msg, player_info_parsed)    
+        self._photo_meeting(msg, player_info_parsed)
+        self._photo_forward(msg, player_info_parsed)
         self.event_manager.invoke_handler_update(player_info_parsed)

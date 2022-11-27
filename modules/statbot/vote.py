@@ -1,21 +1,40 @@
-import functools
-import re
 import datetime
+import re
 from typing import List
-from telegram import ParseMode, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
-from config import settings
-from core import EventManager, MessageManager, Handler as InnerHandler, UpdateFilter, CommandFilter, CommandNameFilter, Update
-from modules import BasicModule
-from models import Vote, VoteAnswer, Group, Player
-from decorators import command_handler, permissions
-from decorators.permissions import is_admin
-from decorators.users import get_player
-from utils.functions import CustomInnerFilters, get_link
-from decorators.update import inner_update
-from decorators.log import log
 
-class VoteModule(BasicModule): #TODO: Переработать
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+from telegram.ext import (
+    CallbackQueryHandler,
+    Dispatcher
+)
+
+from config import settings
+from core import (
+    CommandFilter,
+    CommandNameFilter,
+    EventManager,
+    Handler as InnerHandler,
+    MessageManager,
+    Update
+)
+from decorators import command_handler
+from decorators.log import log
+from decorators.update import inner_update
+from decorators.users import get_player
+from models import (
+    Group,
+    Player,
+    Vote,
+    VoteAnswer
+)
+from modules import BasicModule
+from utils.functions import CustomInnerFilters
+
+
+class VoteModule(BasicModule):  # TODO: Переработать
 
     module_name = 'vote'
 
@@ -30,7 +49,6 @@ class VoteModule(BasicModule): #TODO: Переработать
 
         super().__init__(event_manager, message_manager, dispatcher)
         self.event_manager.scheduler.add_job(self._vote_autoresults, 'interval', minutes=5)
-
 
     @log
     @inner_update()
@@ -47,13 +65,17 @@ class VoteModule(BasicModule): #TODO: Переработать
 
         vote = Vote.get_or_none(Vote.id == vote_id)
         if not vote:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False,
-                                                                    text='Это не опрос')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False,
+                text='Это не опрос'
+            )
         if vote.complete:
-            return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False,
-                                                                    text='Опрос завершён')
+            return self.message_manager.bot.answer_callback_query(
+                callback_query_id=callback_query.id,
+                show_alert=False,
+                text='Опрос завершён'
+            )
         vote_group = Group.get_by_name(f'Vote_{vote_id}', 'vote')
         if not vote_group:
             vote_group = Group.create(name=f'Vote_{vote_id}', type='vote', is_active=True)
@@ -82,15 +104,21 @@ class VoteModule(BasicModule): #TODO: Переработать
         group.members.add(update.player)
         group.parent = vote_group
         group.save()
-        
-        return self.message_manager.bot.answer_callback_query(  callback_query_id=callback_query.id,
-                                                                    show_alert=False,
-                                                                    text='Ты проголосовал в опросе')
 
-    @command_handler(regexp=re.compile( r'(?P<group_aliase>\w+)\s+(?P<subject>.+)\s*'
-                                        r'(?P<answers>[\s\S]+)\s*'
-                                        r'(?P<date>\d{2}\.\d{2}\.\d{4}-\d{2}:\d{2})'),
-                     argument_miss_msg='Пришли сообщение в формате "/vote_create Алиас Тема\n Вариант 1\nВариант 2 и т.д.\n01.01.2020-00:00"')
+        return self.message_manager.bot.answer_callback_query(
+            callback_query_id=callback_query.id,
+            show_alert=False,
+            text='Ты проголосовал в опросе'
+        )
+
+    @command_handler(
+        regexp=re.compile(
+            r'(?P<group_aliase>\w+)\s+(?P<subject>.+)\s*'
+            r'(?P<answers>[\s\S]+)\s*'
+            r'(?P<date>\d{2}\.\d{2}\.\d{4}-\d{2}:\d{2})'
+        ),
+        argument_miss_msg='Пришли сообщение в формате "/vote_create Алиас Тема\n Вариант 1\nВариант 2 и т.д.\n01.01.2020-00:00"'
+    )
     def _vote_create(self, update: Update, match):
         message = update.telegram_update.message
         if not update.player.liders:
@@ -105,7 +133,7 @@ class VoteModule(BasicModule): #TODO: Переработать
         date_text = match.group('date')
         try:
             enddate = datetime.datetime.strptime(date_text, '%d.%m.%Y-%H:%M')
-        except Exception as e:
+        except (Exception, ):
             return self.message_manager.send_message(chat_id=message.chat_id, text=f'{date_text}: Неверный формат даты. Формат: 01.01.2020-00:00')
         answers = match.group('answers').strip().split('\n')
         if not answers:
@@ -117,28 +145,30 @@ class VoteModule(BasicModule): #TODO: Переработать
                 continue
             answers_list.append(VoteAnswer.create(vote=vote, title=answer))
 
-        self.message_manager.send_message(chat_id=message.chat_id, text=f'<b>Опрос #{vote.id} создан</b>\n'
-                                                                        f'<b>Опрос завершится: {enddate}</b>\n'
-                                                                        f'<b>Вариантов ответа:</b> {len(answers_list)} шт.\n'
-                                                                        f'<b>Варианты:</b> {"; ".join([x.title for x in answers_list])}',
-                                            parse_mode='HTML')
+        self.message_manager.send_message(
+            chat_id=message.chat_id, text=f'<b>Опрос #{vote.id} создан</b>\n'
+                                          f'<b>Опрос завершится: {enddate}</b>\n'
+                                          f'<b>Вариантов ответа:</b> {len(answers_list)} шт.\n'
+                                          f'<b>Варианты:</b> {"; ".join([x.title for x in answers_list])}',
+            parse_mode='HTML'
+        )
         text, markup = self.get_vote_kwargs(vote, answers_list)
         for member in group.members.filter(Player.is_active):
             tg_chat = member.telegram_user.chat_id if member.telegram_user else None
             if not tg_chat:
                 continue
-            self.message_manager.send_message(chat_id=tg_chat, text = text, reply_markup = markup, parse_mode='HTML')
-    
+            self.message_manager.send_message(chat_id=tg_chat, text=text, reply_markup=markup, parse_mode='HTML')
+
     def _vote_remove(self, update: Update):
         message = update.telegram_update.message
-        id = update.command.subcommand
-        if not id:
+        vote_id = update.command.subcommand
+        if not vote_id:
             return
         if not update.player.votes_invoked:
             return self.message_manager.send_message(chat_id=message.chat_id, text='Нет доступа')
-        if not id.isdigit():
+        if not vote_id.isdigit():
             return self.message_manager.send_message(chat_id=message.chat_id, text='ID должен быть числом')
-        vote_id = int(id)
+        vote_id = int(vote_id)
 
         vote = Vote.get_or_none(Vote.id == vote_id)
         if not vote:
@@ -162,14 +192,14 @@ class VoteModule(BasicModule): #TODO: Переработать
 
     def _vote_stop(self, update: Update):
         message = update.telegram_update.message
-        id = update.command.subcommand
-        if not id:
+        vote_id = update.command.subcommand
+        if not vote_id:
             return
         if not update.player.votes_invoked:
             return self.message_manager.send_message(chat_id=message.chat_id, text='Нет доступа')
-        if not id.isdigit():
+        if not vote_id.isdigit():
             return self.message_manager.send_message(chat_id=message.chat_id, text='ID должен быть числом')
-        vote_id = int(id)
+        vote_id = int(vote_id)
 
         vote = Vote.get_or_none(Vote.id == vote_id)
         if not vote:
@@ -207,12 +237,14 @@ class VoteModule(BasicModule): #TODO: Переработать
                 results.append(f'\t\t{idx}. <code>{answer.title}</code>\n\t\t\t- Vote_{vote.id}_{answer.id}')
             results = '\n'.join(results)
             chat_id = chat_id if vote.type == 0 else settings.GOAT_ADMIN_CHAT_ID
-            self.message_manager.send_message(chat_id=chat_id,
-                                                text=   f'<b>Опрос #{vote.id}</b> завершился.\n'
-                                                        f'Его тема: <b>{vote.subject}</b>\n'
-                                                        f'\nРезультаты в группах:\n{results}\n'
-                                                        'Группы удалятся, через 8 часов.',
-                                                parse_mode='HTML')
+            self.message_manager.send_message(
+                chat_id=chat_id,
+                text=f'<b>Опрос #{vote.id}</b> завершился.\n'
+                     f'Его тема: <b>{vote.subject}</b>\n'
+                     f'\nРезультаты в группах:\n{results}\n'
+                     'Группы удалятся, через 8 часов.',
+                parse_mode='HTML'
+            )
         remove_group_query = Vote.select().where((Vote.complete == True) & (Vote.enddate < now - datetime.timedelta(hours=8)))
 
         for vote in remove_group_query:
@@ -233,7 +265,9 @@ class VoteModule(BasicModule): #TODO: Переработать
     @staticmethod
     def get_vote_kwargs(vote: Vote, answers_list: List[VoteAnswer]):
         text = f'<b>{vote.subject}</b>\n'
-        markup = InlineKeyboardMarkup([
-                    *[[InlineKeyboardButton(text=answer.title, callback_data=f'vote_answer_{vote.id}_{answer.id}')] for answer in answers_list]
-                ])
+        markup = InlineKeyboardMarkup(
+            [
+                *[[InlineKeyboardButton(text=answer.title, callback_data=f'vote_answer_{vote.id}_{answer.id}')] for answer in answers_list]
+            ]
+        )
         return text, markup

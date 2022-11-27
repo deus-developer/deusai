@@ -1,12 +1,20 @@
-from telegram.ext import Dispatcher, MessageHandler, Filters
+from telegram.ext import (
+    Dispatcher,
+    Filters,
+    MessageHandler
+)
 
-from core import EventManager, MessageManager, Update
+from core import (
+    EventManager,
+    MessageManager,
+    Update
+)
 from decorators import command_parser
-from decorators.users import get_player
 from decorators.chat import get_chat
 from decorators.log import log_command
+from decorators.users import get_player
 from modules import BasicModule
-import telegram
+
 
 class CommandModule(BasicModule):
     """

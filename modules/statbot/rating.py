@@ -1,19 +1,33 @@
 import functools
-from io import StringIO, RawIOBase
+from io import (
+    RawIOBase,
+    StringIO
+)
 
 import telegram
+from jinja2 import Template
 from telegram import ChatAction
 from telegram.ext import Dispatcher
-
-from jinja2 import Template
-
-from core import EventManager, MessageManager, Handler, CommandFilter, Update
-from decorators.permissions import permissions, is_admin
-from models import Player, Group
-from modules import BasicModule
-from utils import get_link
-from utils.functions import CustomInnerFilters
 from telegram.utils.helpers import mention_html
+
+from core import (
+    CommandFilter,
+    EventManager,
+    Handler,
+    MessageManager,
+    Update
+)
+from decorators.permissions import (
+    is_admin,
+    permissions
+)
+from models import (
+    Group,
+    Player
+)
+from modules import BasicModule
+from utils.functions import CustomInnerFilters
+
 
 class BytesIOWrapper(RawIOBase):
     def __init__(self, file, encoding='utf-8', errors='strict'):
@@ -38,19 +52,66 @@ class RatingAbstractModule(BasicModule):
     stream: StringIO
 
     COMMANDS = {
-        'bmtop': {'field': Player.sum_stat, 'label': 'Топ игроков', 'visible': False},
-        'rushtop': {'field': Player.attack, 'label': 'Топ дамагеров', 'visible': False},
-        'hptop': {'field': Player.hp, 'label': 'Топ танков', 'visible': False},
-        'acctop': {'field': Player.accuracy, 'label': 'Топ снайперов', 'visible': False},
-        'agtop': {'field': Player.agility, 'label': 'Топ ловкачей', 'visible': False},
-        'ortop': {'field': Player.oratory, 'label': 'Топ дипломатов', 'visible': False},
-        'karmatop': {'field': Player.karma, 'label': 'Топ святых', 'visible': True},
-        'raidtop': {'field': Player.raid_points, 'label': 'Топ рейдеров', 'visible': True},
-        'dzentop': {'field': Player.dzen, 'label': 'Топ дзенистых', 'visible': False},
-        'ranktop': {'field': Player.rank_id, 'label': 'Топ ранговых', 'visible': False},
-        'rewardtop': {'field': Player.raid_reward, 'label': 'Топ профитных', 'visible': False},
-        'dzentop': {'field': Player.dzen, 'label': 'Топ дзенистых', 'visible': False},
-        'armortop': {'field': Player.defence, 'label': 'Топ укреплённых', 'visible': False},
+        'bmtop': {
+            'field': Player.sum_stat,
+            'label': 'Топ игроков',
+            'visible': False
+        },
+        'rushtop': {
+            'field': Player.attack,
+            'label': 'Топ дамагеров',
+            'visible': False
+        },
+        'hptop': {
+            'field': Player.hp,
+            'label': 'Топ танков',
+            'visible': False
+        },
+        'acctop': {
+            'field': Player.accuracy,
+            'label': 'Топ снайперов',
+            'visible': False
+        },
+        'agtop': {
+            'field': Player.agility,
+            'label': 'Топ ловкачей',
+            'visible': False
+        },
+        'ortop': {
+            'field': Player.oratory,
+            'label': 'Топ дипломатов',
+            'visible': False
+        },
+        'karmatop': {
+            'field': Player.karma,
+            'label': 'Топ святых',
+            'visible': True
+        },
+        'raidtop': {
+            'field': Player.raid_points,
+            'label': 'Топ рейдеров',
+            'visible': True
+        },
+        'dzentop': {
+            'field': Player.dzen,
+            'label': 'Топ дзенистых',
+            'visible': False
+        },
+        'ranktop': {
+            'field': Player.rank_id,
+            'label': 'Топ ранговых',
+            'visible': False
+        },
+        'rewardtop': {
+            'field': Player.raid_reward,
+            'label': 'Топ профитных',
+            'visible': False
+        },
+        'armortop': {
+            'field': Player.defence,
+            'label': 'Топ укреплённых',
+            'visible': False
+        },
     }
 
     def _top(self, field_data):
@@ -76,15 +137,26 @@ class RatingModule(RatingAbstractModule):
 
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         for command in self.COMMANDS:
-            self.add_inner_handler(Handler(CommandFilter(command), self._top(self.COMMANDS[command]),
-                                           [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
-        self.add_inner_handler(Handler(CommandFilter('top_ls'), self._top_ls,
-                                           [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+            self.add_inner_handler(
+                Handler(
+                    CommandFilter(command), self._top(self.COMMANDS[command]),
+                    [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+                )
+            )
+        self.add_inner_handler(
+            Handler(
+                CommandFilter('top_ls'), self._top_ls,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
         super().__init__(event_manager, message_manager, dispatcher)
 
     def _top_ls(self, update: Update):
-        return self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id,
-                                            text='\n'.join([f'/{command} - {_dict.get("label", "топ")}' for command, _dict in self.COMMANDS.items()]))
+        return self.message_manager.send_message(
+            chat_id=update.telegram_update.message.chat_id,
+            text='\n'.join([f'/{command} - {_dict.get("label", "топ")}' for command, _dict in self.COMMANDS.items()])
+        )
+
     def _send_message(self, chat_id, from_player: Player, field_data, group):
         group = Group.get_by_name(group)
         if group and not from_player.telegram_user.is_admin and group not in from_player.members:
@@ -128,18 +200,27 @@ class RatingModule(RatingAbstractModule):
             nickname = mention_html(player.telegram_user_id, player.nickname)
         return f'{player.idx}) {nickname}: {getattr(player, "value", 0)}' if visible else f'{player.idx}) {player.nickname}'
 
+
 class AdminRatingModule(RatingAbstractModule):
     module_name = 'rating_admin'
 
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher = None):
 
         for command in self.COMMANDS:
-            self.add_inner_handler(Handler(CommandFilter(f'{command}_all'), self._top(self.COMMANDS[command]),
-                                           [CustomInnerFilters.from_player]))
-            self.add_inner_handler(Handler(CommandFilter(f'{command}_all_u'),
-                                           self._top(self.COMMANDS[command], by_username=True),
-                                           [CustomInnerFilters.from_player]))
-        
+            self.add_inner_handler(
+                Handler(
+                    CommandFilter(f'{command}_all'), self._top(self.COMMANDS[command]),
+                    [CustomInnerFilters.from_player]
+                )
+            )
+            self.add_inner_handler(
+                Handler(
+                    CommandFilter(f'{command}_all_u'),
+                    self._top(self.COMMANDS[command], by_username=True),
+                    [CustomInnerFilters.from_player]
+                )
+            )
+
         super().__init__(event_manager, message_manager, dispatcher)
 
     def _top(self, field_data, by_username=False):
@@ -166,10 +247,12 @@ class AdminRatingModule(RatingAbstractModule):
 
         self.message_manager.bot.send_chat_action(
             chat_id=chat_id,
-            action=ChatAction.UPLOAD_DOCUMENT)
+            action=ChatAction.UPLOAD_DOCUMENT
+        )
 
         self.message_manager.bot.send_document(
-            chat_id=chat_id, document=BytesIOWrapper(self.stream), filename='top.html')
+            chat_id=chat_id, document=BytesIOWrapper(self.stream), filename='top.html'
+        )
 
     def _write_msg(self, player_called: Player, query, label, by_username=False):
         template = Template(open('files/templates/admin_top.html', 'r', encoding='utf-8').read())
@@ -177,12 +260,12 @@ class AdminRatingModule(RatingAbstractModule):
         tops = []
         for index, player in enumerate(query, 1):
             tops.append(
-                    {
-                        'rank': player.idx,
-                        'link': self.link_to_player(player, by_username),
-                        'value': player.value
-                    }
-                )
+                {
+                    'rank': player.idx,
+                    'link': self.link_to_player(player, by_username),
+                    'value': player.value
+                }
+            )
             total += player.value
         self.stream.write(template.render(tops=tops, total=total, caption=label))
 

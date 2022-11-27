@@ -1,46 +1,91 @@
-import functools
 import re
-import datetime
 
-from telegram import ParseMode
 from telegram.ext import Dispatcher
 
-from core import EventManager, MessageManager, Handler as InnerHandler, UpdateFilter, CommandFilter, CommandNameFilter, Update
-
-from modules import BasicModule
-from models import Settings, Player
-from decorators import command_handler, permissions
-from decorators.permissions import is_admin, is_rank, or_, self_, and_, is_developer
+from core import (
+    CommandFilter,
+    CommandNameFilter,
+    EventManager,
+    Handler as InnerHandler,
+    MessageManager,
+    Update
+)
+from decorators import (
+    command_handler,
+    permissions
+)
+from decorators.permissions import (
+    and_,
+    is_admin,
+    is_rank,
+    or_,
+    self_
+)
 from decorators.users import get_players
-from utils.functions import CustomInnerFilters, get_link, _sex_image, _ping_image
+from modules import BasicModule
+from utils.functions import (
+    CustomInnerFilters,
+    _sex_image
+)
+
 
 def yes_no_emoji(value):
     return '✅' if bool(value) else '❌'
 
+
 def editable_command(command: str, editable: bool):
     return f'\n\t\t\t-> /{command}' if editable else '🔒'
 
-class SettingsModule(BasicModule): #TODO: Доработать
+
+class SettingsModule(BasicModule):  # TODO: Доработать
 
     module_name = 'settings'
 
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
-        self.add_inner_handler(InnerHandler(CommandFilter('set_sex'), self._set_sex,
-                                            [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]))
-        self.add_inner_handler(InnerHandler(CommandFilter('set_timezone'), self._set_timezone,
-                                            [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]))
-        self.add_inner_handler(InnerHandler(CommandFilter('set_sleeptime'), self._set_sleeptime,
-                                            [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]))
-        self.add_inner_handler(InnerHandler(CommandFilter('set_house'), self._set_house,
-                                            [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('set_sex'), self._set_sex,
+                [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('set_timezone'), self._set_timezone,
+                [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('set_sleeptime'), self._set_sleeptime,
+                [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('set_house'), self._set_house,
+                [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandFilter('settings'), self._settings,
-                                            [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]))
-        self.add_inner_handler(InnerHandler(CommandFilter('settings_pings'), self._settings_pings,
-                                            [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('settings'), self._settings,
+                [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]
+            )
+        )
+        self.add_inner_handler(
+            InnerHandler(
+                CommandFilter('settings_pings'), self._settings_pings,
+                [CustomInnerFilters.from_admin_chat_or_private, CustomInnerFilters.from_player]
+            )
+        )
 
-        self.add_inner_handler(InnerHandler(CommandNameFilter('sping'), self._sping_switch,
-                                            [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]))
+        self.add_inner_handler(
+            InnerHandler(
+                CommandNameFilter('sping'), self._sping_switch,
+                [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
+            )
+        )
 
         super().__init__(event_manager, message_manager, dispatcher)
 
@@ -74,16 +119,16 @@ class SettingsModule(BasicModule): #TODO: Доработать
         settings = player.settings
 
         formatted_settings += (
-                f'Пол: {_sex_image(settings.sex)} {editable_command("set_sex", editable)}\n'
-                f'Временная зона: {settings.timedelta} {editable_command("set_timezone", editable)}\n'
-                f'Время сна: {settings.sleeptime} {editable_command("set_sleeptime", editable)}\n'
-                f'Дом в Ореоле: {"Есть" if settings.house == 1 else "Отсутствует"} {editable_command("set_house", editable)}\n'
-            )
+            f'Пол: {_sex_image(settings.sex)} {editable_command("set_sex", editable)}\n'
+            f'Временная зона: {settings.timedelta} {editable_command("set_timezone", editable)}\n'
+            f'Время сна: {settings.sleeptime} {editable_command("set_sleeptime", editable)}\n'
+            f'Дом в Ореоле: {"Есть" if settings.house == 1 else "Отсутствует"} {editable_command("set_house", editable)}\n'
+        )
 
         if is_rank(rank_name='Капрал')(player=player):
             formatted_settings += (
-                    f'Пинги: <code>Меню</code> {"/settings_pings" if editable else "🔒"}\n'
-                )
+                f'Пинги: <code>Меню</code> {"/settings_pings" if editable else "🔒"}\n'
+            )
 
         self.message_manager.send_message(
             chat_id=chat_id,
@@ -130,8 +175,10 @@ class SettingsModule(BasicModule): #TODO: Доработать
         return update.telegram_update.message.reply_text(f'Изменил настройку пинга. Текущее значение: {yes_no_emoji(settings.pings[ping_name])}')
 
     @permissions(or_(is_admin, is_rank(rank_name='Рядовой')))
-    @command_handler(regexp=re.compile(r'(?P<sex>[12])?'),
-                     argument_miss_msg='Пришли сообщение в формате "/set_sex [1-2]"\n\t1 - мужчина\n\t2 - женщина')
+    @command_handler(
+        regexp=re.compile(r'(?P<sex>[12])?'),
+        argument_miss_msg='Пришли сообщение в формате "/set_sex [1-2]"\n\t1 - мужчина\n\t2 - женщина'
+    )
     def _set_sex(self, update: Update, match, *args, **kwargs):
         """
         Команда вызывается с числовым параметром от 1 до 2. 
@@ -152,8 +199,10 @@ class SettingsModule(BasicModule): #TODO: Доработать
         )
 
     @permissions(or_(is_admin, is_rank(rank_name='Рядовой')))
-    @command_handler(regexp=re.compile(r'(?P<is_house>[12])?'),
-                     argument_miss_msg='Пришли сообщение в формате "/set_house [1-2]"\n\t1 - Нет дома в Ореоле\n\t2 - Есть дом в Ореоле')
+    @command_handler(
+        regexp=re.compile(r'(?P<is_house>[12])?'),
+        argument_miss_msg='Пришли сообщение в формате "/set_house [1-2]"\n\t1 - Нет дома в Ореоле\n\t2 - Есть дом в Ореоле'
+    )
     def _set_house(self, update: Update, match, *args, **kwargs):
         """
         Команда вызывается с числовым параметром от 1 до 2. 
@@ -174,46 +223,50 @@ class SettingsModule(BasicModule): #TODO: Доработать
         )
 
     @permissions(or_(is_admin, is_rank(rank_name='Рядовой')))
-    @command_handler(regexp=re.compile(r'(?P<sign>[+-])?(?P<timedelta>\d+)'),
-                     argument_miss_msg='Пришли сообщение в формате "/set_timezone [-24 - +24]"')
+    @command_handler(
+        regexp=re.compile(r'(?P<sign>[+-])?(?P<timedelta>\d+)'),
+        argument_miss_msg='Пришли сообщение в формате "/set_timezone [-24 - +24]"'
+    )
     def _set_timezone(self, update: Update, match, *args, **kwargs):
         chat_id = update.telegram_update.message.chat_id
         sign, delta = match.group('sign', 'timedelta')
         delta = int(delta)
         if not (0 <= delta <= 23):
             return self.message_manager.send_message(
-                                                chat_id=chat_id,
-                                                text=f'Введи часы в диапазоне от -23 до 23'
-                                            )
+                chat_id=chat_id,
+                text=f'Введи часы в диапазоне от -23 до 23'
+            )
         sign = True if sign == '+' or sign == '' else False
         delta = int(delta) if sign else -int(delta)
 
         pl = update.player
         pl.settings.timedelta = delta
         pl.settings.save()
-        
+
         self.message_manager.send_message(
             chat_id=chat_id,
             text=f'Твой часовой пояс обновлён ({delta})'
         )
 
     @permissions(or_(is_admin, is_rank(rank_name='Рядовой')))
-    @command_handler(regexp=re.compile(r'(?P<time>(?P<hour1>\d{2}):(?P<minute1>\d{2})-(?P<hour2>\d{2}):(?P<minute2>\d{2}))'),
-                     argument_miss_msg='Пришли сообщение в формате "/set_sleeptime 00:00-00:00"\n\tПо МСК!!! Это диапазон времени твоего сна.')
+    @command_handler(
+        regexp=re.compile(r'(?P<time>(?P<hour1>\d{2}):(?P<minute1>\d{2})-(?P<hour2>\d{2}):(?P<minute2>\d{2}))'),
+        argument_miss_msg='Пришли сообщение в формате "/set_sleeptime 00:00-00:00"\n\tПо МСК!!! Это диапазон времени твоего сна.'
+    )
     def _set_sleeptime(self, update: Update, match, *args, **kwargs):
         chat_id = update.telegram_update.message.chat_id
         time = match.group('time')
         hour1, minute1, hour2, minute2 = [int(x) for x in match.group('hour1', 'minute1', 'hour2', 'minute2')]
         if not ((0 <= hour1 <= 23) and (0 <= hour2 <= 23)):
             return self.message_manager.send_message(
-                                                chat_id=chat_id,
-                                                text=f'Введи часы в диапазоне от 00 до 23'
-                                            )
+                chat_id=chat_id,
+                text=f'Введи часы в диапазоне от 00 до 23'
+            )
         if not ((0 <= minute1 <= 59) and (0 <= minute2 <= 59)):
             return self.message_manager.send_message(
-                                                chat_id=chat_id,
-                                                text=f'Введи минуты в диапазоне от 00 до 59'
-                                            )
+                chat_id=chat_id,
+                text=f'Введи минуты в диапазоне от 00 до 59'
+            )
 
         pl = update.player
         pl.settings.sleeptime = time

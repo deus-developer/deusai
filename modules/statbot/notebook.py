@@ -1,14 +1,20 @@
 import datetime
+
+from pytils import dt
 from telegram.ext import Dispatcher
-from config import settings
-from core import EventManager, MessageManager, Handler as InnerHandler, UpdateFilter, CommandFilter, Update
+
+from core import (
+    EventManager,
+    Handler as InnerHandler,
+    MessageManager,
+    Update,
+    UpdateFilter
+)
 from models import Notebook
 from modules import BasicModule
-from utils.functions import CustomInnerFilters
-from pytils import dt
-import time
 
-class NotebookModule(BasicModule): #TODO: Добавить человекочитаеммое форматирование
+
+class NotebookModule(BasicModule):  # TODO: Добавить человекочитаеммое форматирование
     module_name = 'notebook'
 
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
@@ -40,9 +46,8 @@ class NotebookModule(BasicModule): #TODO: Добавить человекочи�
         }
 
     def _parse_notebook(self, update: Update):
-    
         notebook = update.notebook
-        timeout = datetime.datetime.now()-datetime.timedelta(seconds=10)
+        timeout = datetime.datetime.now() - datetime.timedelta(seconds=10)
 
         if update.telegram_update.message.forward_date < timeout:
             return
@@ -50,19 +55,21 @@ class NotebookModule(BasicModule): #TODO: Добавить человекочи�
             return
 
         if not update.player.notebook:
-            update.player.notebook = Notebook.create(last_update = timeout-datetime.timedelta(seconds=10))
+            update.player.notebook = Notebook.create(last_update=timeout - datetime.timedelta(seconds=10))
             update.player.save()
 
         if update.player.notebook.last_update > update.telegram_update.message.forward_date:
-            return self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id,
-                                                        text='Ты пытаешься отправить более старый дневник.')
+            return self.message_manager.send_message(
+                chat_id=update.telegram_update.message.chat_id,
+                text='Ты пытаешься отправить более старый дневник.'
+            )
         delts = []
         for name, value, name2 in notebook.attrs:
             key = self.KEY_BY_NAME.get(name, 'buffer')
             last = getattr(update.player.notebook, key)
-            if key == 'buffer' or (value-last) <= 0:
+            if key == 'buffer' or (value - last) <= 0:
                 continue
-            delts.append([name, value-last, name2])
+            delts.append([name, value - last, name2])
             setattr(update.player.notebook, key, value)
 
         output = ['\t<b>Обновление дневника:</b>']
@@ -72,8 +79,10 @@ class NotebookModule(BasicModule): #TODO: Добавить человекочи�
             output.append('\t\t\t<i>Ой, а где оно?</i>')
 
         output.append(f'\n\t<i><code>Последнее изменение: {dt.distance_of_time_in_words(update.player.notebook.last_update, accuracy=3)}</code></i>')
-        self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id,
-                                        text='\n'.join(output),
-                                        parse_mode='HTML')
+        self.message_manager.send_message(
+            chat_id=update.telegram_update.message.chat_id,
+            text='\n'.join(output),
+            parse_mode='HTML'
+        )
         update.player.notebook.last_update = update.date
         update.player.notebook.save()
