@@ -58,7 +58,6 @@ class Config(object):
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 
     DATETIME_FORMAT = os.getenv('DATETIME_FORMAT', '%Y-%m-%d %H:%M:%S')
-    sql_logging = os.getenv('SQL_LOGGING', '0')
     timezone = datetime.timezone(offset=datetime.timedelta(hours=3))  # MSK
 
     @property

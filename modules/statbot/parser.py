@@ -572,6 +572,7 @@ class ParserModule(BasicModule):
             r'🗣Харизма:\s+(?P<oratory>\d+)(\s*\([^)]*\))?\s*'
             r'🤸🏽‍♂️Ловкость:\s+(?P<agility>\d+)(\s*\([^)]*\))?\s*'
             r'(?:💡Умения /perks\s+)?'
+            r'(?:⭐️Испытания.+)?'
             r'🔋Выносливость:\s+(?P<stamina_now>\d+)/(?P<stamina>\d+)\s*/ref\s+'
             r'📍(?P<location>[^\n]*),\s*👣\s*(?P<distance>\d+)км\.\s*(?P<on_raid>👊)?'
         )
