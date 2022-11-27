@@ -125,7 +125,6 @@ class Config(object):
         except ValueError:
             self.NOTIFY_CHAT_ID = self.ADMIN_CHAT_ID
 
-        self.sql_logging = True if self.sql_logging == '1' else False
         self.BASEDIR = BASEDIR
         logging.config.dictConfig(self.LOGGING_CONFIG)
         logger = logging.getLogger('apscheduler.executors.default')
