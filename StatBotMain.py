@@ -49,7 +49,6 @@ class StatBot:
             statbot_modules.ParserModule, statbot_modules.RaidResultModule,
 
             statbot_modules.TriggersModule,  # Работа с текстовыми соо
-            statbot_modules.TakingModule,
 
             statbot_modules.VoteModule,  # Inlines
             # Частые хуки на парсинг
@@ -63,7 +62,7 @@ class StatBot:
             statbot_modules.FeedbackModule,
             statbot_modules.StartModule, statbot_modules.RatingModule, statbot_modules.AdminRatingModule,
             statbot_modules.EchoModule, statbot_modules.AdminModule, statbot_modules.ActivatedModule,
-            statbot_modules.StatisticsModule, statbot_modules.FreezeModule,
+            statbot_modules.FreezeModule,
             statbot_modules.NotificationsModule, statbot_modules.RankModule, statbot_modules.SettingsModule,
             statbot_modules.DeveloperToolsModule, statbot_modules.ChatToolsModule, statbot_modules.InventoryModule,
         ]

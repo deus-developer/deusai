@@ -145,38 +145,6 @@ class StatModule(BasicModule):  # TODO: Провести оптимизацию
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
             )
         )
-        self.add_inner_handler(
-            InnerHandler(
-                CommandFilter('refs'), self._refferals,
-                [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
-            )
-        )
-
-        self.add_inner_handler(
-            InnerHandler(
-                CommandFilter('quests'), self._quests_manager,
-                [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
-            )
-        )
-        self.add_inner_handler(
-            InnerHandler(
-                CommandFilter('questsa'), self._quests_active,
-                [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
-            )
-        )
-        self.add_inner_handler(
-            InnerHandler(
-                CommandFilter('questsc'), self._quests_complete,
-                [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
-            )
-        )
-
-        self.add_inner_handler(
-            InnerHandler(
-                CommandFilter('referral_set'), self._referral_set,
-                [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
-            )
-        )
 
         self.add_inner_handler(
             InnerHandler(
@@ -256,97 +224,8 @@ class StatModule(BasicModule):  # TODO: Провести оптимизацию
             return update.message.reply_text(f'Пока что кнопка [{update.telegram_update.message.text}] не работает')
         update.command = core.Command(update.telegram_update.message)
         update.command.argument = ''
+        # noinspection PyTypeChecker
         return handler['handler'](update, *args, **kwargs, **handler['kwargs'])
-
-    @get_players(include_reply=True, break_if_no_players=False, callback_message=True)
-    @permissions(or_(is_admin, self_))
-    def _refferals(self, update: InnerUpdate, players: list, *args, **kwargs):
-        message = update.telegram_update.message
-        chat_id = message.chat_id
-        players_list = players or ([update.player] if update.command.argument == '' else [])
-        if not players_list:
-            return
-        for player in players_list:
-            self._show_player_refferals(player, chat_id, player == update.player)
-
-    def _show_player_refferals(self, player: models.Player, chat_id, editable=False):
-        output = 'Твои реффералы' if editable else f'Реффералы игрока {mention_html(player.telegram_user_id, player.nickname)}'
-        output += ':\n'
-        output += self._referals_ls_text(player) or '\n\t\t<code>Отсутствуют :)</code>'
-        self.message_manager.send_message(chat_id=chat_id, text=output, parse_mode='HTML')
-
-    def _referals_ls_text(self, mentor: Player, level: int = 1):
-        output = []
-        for idx, referral in enumerate(mentor.referrals, 1):
-            tab = '\t\t' * level
-            output.append(f'{tab}{idx}. 👤{referral.nickname} [{"Active" if referral.is_active else "Banned"}]')
-            if referral.referrals.exists():
-                output.append(self._referals_ls_text(referral, level + 1))
-        return '\n'.join(output)
-
-    @permissions(is_admin)
-    @command_handler(
-        regexp=re.compile(r'#(?P<mentor_id>\d+)\s*->\s*#(?P<referral_id>\d+)'),
-        argument_miss_msg='Пришли сообщение в формате "/referral_set #mentor_id -> #referral_id"'
-    )
-    def _referral_set(self, update: InnerUpdate, match, *args, **kwargs):
-        mentor, referral = [TelegramUser.get_or_none(user_id=int(x)) for x in match.group('mentor_id', 'referral_id')]
-
-        if not (mentor and referral):
-            return update.telegram_update.message.reply_text('Один из участников не существует. Узнать ID можно в /info.')
-
-        if mentor == referral:
-            return update.telegram_update.message.reply_text('Нельзя назначить реффералом самого ментора.')
-
-        mentor, referral = [x.player.get() if x.player.exists() else None for x in [mentor, referral]]
-
-        if not (mentor and referral):
-            return update.telegram_update.message.reply_text('Один из участников не имеет профиля. Узнать наличие профиля можно в /info.')
-
-        referral.mentor = mentor
-        referral.save()
-
-        update.telegram_update.message.reply_text(
-            f'Готово. Теперь {mention_html(referral.telegram_user_id, referral.nickname)} рефферал {mention_html(mentor.telegram_user_id, mentor.nickname)}.',
-            parse_mode='HTML'
-        )
-
-    @permissions(is_admin)
-    def _quests_manager(self, update: InnerUpdate):
-        text = (
-            '<b>Менеджер заданий📕</b>\n'
-            f'\t\t<b>-> Активные задания:</b> /questsa [0 шт.]\n'
-            f'\t\t<b>-> Выполненые задания:</b> /questsc [0 шт.]'
-        )
-        self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id, text=text, parse_mode='HTML')
-
-    @permissions(is_admin)
-    def _quests_active(self, update: InnerUpdate):
-        text = (
-            '<b>Активные задания📕</b>\n'
-            '\n<code>Основное:</code>\n'
-            '\t\t<b>Задание 📕N56</b>\n'
-            '\t\t\t\tУбить WestMoscow x10🦆 /qinfo_56\n'
-            '\t\t\t\t<b>Прогресс:  ▓▓▓▓▓▓▓░░░</b> [70%]\n'
-            '\n<code>Звание:</code>\n'
-            '\t\t<b>Задание 📕N100</b>\n'
-            '\t\t\t\tПолучить Капрала🦆 /qinfo_100\n'
-            '\t\t\t\t<b>Прогресс:  ▓▓▓▓▓▓▓░░░</b> [70%]\n'
-            '\n<code>Побочные:</code>\n'
-            '\t\t<b>Задание 📕N57</b>\n'
-            '\t\t\t\tЛюбитель деликатесов🦆 /qinfo_57\n'
-            '\t\t\t\t<b>Прогресс:  ▓▓▓▓▓▓▓░░░</b> [70%]'
-        )
-        self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id, text=text, parse_mode='HTML')
-
-    @permissions(is_admin)
-    def _quests_complete(self, update: InnerUpdate):
-        text = (
-            '<b>Выполненые задания📗</b>\n'
-            '\t\t<b>-> Любитель деликатесов🦆</b> /qinfo_57\n'
-            '\t\t<b>-> Лютый Дрочила🪓🤪</b> /qinfo_58\n'
-        )
-        self.message_manager.send_message(chat_id=update.telegram_update.message.chat_id, text=text, parse_mode='HTML')
 
     @permissions(is_lider)
     @command_handler(argument_miss_msg='Пришли сообщение в формате "/stamina_ls Группа"')

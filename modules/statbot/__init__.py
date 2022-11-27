@@ -15,7 +15,6 @@ from .activated import ActivatedModule
 from .raid_result import RaidResultModule
 from .radar import RadarModule
 from .freeze import FreezeModule
-from .taking import TakingModule
 from .notifications import NotificationsModule
 from .feedback import FeedbackModule
 from .rank import RankModule

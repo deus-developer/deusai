@@ -45,11 +45,8 @@ class Config(object):
         'DATABASE_URL',
         'sqlite:///' + os.path.join(BASEDIR, 'db.sqlite')
         )
-    # LEGACY_DATABASE_PATH = os.getenv('LEGACY_DB_PATH', 'db.sqlite')
 
     TG_TOKEN = os.getenv('TG_TOKEN')
-
-    TG_PROXY_URL = os.getenv('TG_PROXY_URL')
 
     ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 

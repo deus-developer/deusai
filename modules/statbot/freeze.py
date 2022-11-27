@@ -172,13 +172,14 @@ class FreezeModule(BasicModule):
             text=f'✅Отпуска сняты у игроков: {"; ".join(pls)}', parse_mode='HTML'
         )
 
-    def _auto_unfreeze(self, *args, **kwargs):  # TODO: Оптимизировать процесс работы с базой
-        last = datetime.datetime.now()
-        frozen_players = Player.select() \
-            .where(Player.frozendate <= last) \
-            .filter(Player.frozen == True)
+    def _auto_unfreeze(self, *args, **kwargs):
+        now = datetime.datetime.now()
 
-        for pl in frozen_players:
-            pl.frozen = False
-            pl.frozendate = last
-            pl.save()
+        query = Player.update({
+            Player.frozen: False,
+            Player.frozendate: now
+        }).where(
+            Player.frozendate <= now,
+            Player.frozen == True
+        )
+        query.execute()

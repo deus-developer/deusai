@@ -1,15 +1,96 @@
+import random
 import telegram
 from telegram.ext import Dispatcher
 from core import (
-    EventManager,
-    MessageManager,
     CommandFilter,
+    EventManager,
     Handler,
+    MessageManager,
     Update
 )
 from modules import BasicModule
 from utils.functions import CustomInnerFilters
-from random import randint
+
+ROLLS_TEXTS = '''педор
+чмошник
+красавчик
+милаш
+няша
+пуся
+хуй моржовый
+уебашка
+дикий
+тупенький
+генианальный
+тварь блядьб
+сын маминой подруги
+анус ежа
+какаха
+еблозавр
+сволота
+жопа
+китайский фонарик
+конь педальный
+сопелька зелёная
+хуедрыгало
+латентный педераст
+питерский гопник
+петух гамбургский
+петушъя ляжка
+задротина
+венесуэльская шлюха
+гидропидорас натрия
+плесень подъяичная
+ъуъ сука
+Туалетный крякер
+Сульфоебанат калия
+гусь кастрюльный
+Педик обыкновенный
+Сопля верблюда
+скелебро
+ленивый мешок костей
+лошок
+мать-козе
+боженька
+Паравозик Дыр-Дыр-Дыр
+акулёнок туру ру
+дур очка
+акула нахуй
+арбуэ
+алоэ
+ебалай
+аыаыаыыы
+даун
+йебанъ
+шоколадница
+педро гонзалес
+йибасио
+сосальщик(печеночный)
+фуфломицин
+хорошЫыый
+пьяненький
+дед
+алкашня
+милаха
+чудо
+прелесть
+хил на низком старте
+Хомяк
+Цезарь
+Брут
+Иуда
+Трус
+Балбес
+Бывалый
+Шурик
+super mario
+переживший Толину капчу
+Толя
+Шоколад очка
+Дон Педро
+Хуаниссимо
+Заднеприводный
+ГЕЙмер'''.split('\n')
 
 
 class StartModule(BasicModule):
@@ -73,7 +154,6 @@ class StartModule(BasicModule):
         self.message_manager.send_message(chat_id=update.invoker.chat_id, text="Рад тебя видеть", reply_markup=reply_markup)
 
     def _rolly(self, update: Update):
-        rolly = open('files/rolls.txt', 'r', encoding='utf-8').read().split('\n')
-        roll = rolly[randint(0, len(rolly) - 1)]
+        roll = random.choice(ROLLS_TEXTS)
         update.telegram_update.message.reply_text(text=f'{update.player} у нас - {roll}')
         update.telegram_update.message.delete()
