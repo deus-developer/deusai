@@ -264,6 +264,8 @@ class PVPModule(BasicModule):  # TODO: Полностью переработат
         pass
 
     def _meeting_show_order(self, update: PlayerParseResult):
+        if not update.meeting:
+            return
         self._order_meeting_show.append(update)
 
     def _meeting_show_job(self):
@@ -315,8 +317,6 @@ class PVPModule(BasicModule):  # TODO: Полностью переработат
     def _meeting_show(self, update: PlayerParseResult):
         meeting = update.meeting
         message = update.telegram_update.message
-        if not meeting.nic:
-            return
 
         players = Player.select() \
             .where(peewee.fn.LOWER(Player.nickname).contains(meeting.nic.lower()) | (Player.pu_code == meeting.code)) \
@@ -352,7 +352,12 @@ class PVPModule(BasicModule):  # TODO: Полностью переработат
         if main_text is None:
             main_text = 'Ух ля, никого не нашёл('
         markup = InlineKeyboardMarkup(buttons) if len(buttons) > 1 else None
-        self.message_manager.send_message(chat_id=update.invoker.chat_id, text=main_text, parse_mode='HTML', reply_markup=markup)
+        self.message_manager.send_message(
+            chat_id=update.telegram_update.message.chat_id,
+            text=main_text,
+            parse_mode='HTML',
+            reply_markup=markup
+        )
 
     @inner_update()
     @get_player

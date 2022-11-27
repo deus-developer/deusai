@@ -1273,5 +1273,4 @@ class ParserModule(BasicModule):
         msg = update.telegram_update.message
 
         self._photo_meeting(msg, player_info_parsed)
-        self._photo_forward(msg, player_info_parsed)
         self.event_manager.invoke_handler_update(player_info_parsed)
