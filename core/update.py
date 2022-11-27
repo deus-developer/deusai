@@ -1,6 +1,7 @@
 import datetime
 import telegram
 
+from config import settings
 from core import Command
 import json
 
@@ -21,19 +22,19 @@ class Update:
         self.stock = None
         self.date = None
         self.timedelta = None
-        self.telegram_update = None
+        self.telegram_update = telegram_update
         self.delay = delay
         self.command = command
         self.invoker = None
         self.player = None
         self.chat = None
 
-        if telegram_update is not None:
-            self.telegram_update = telegram_update
-            if telegram_update.message:
-                self.date = telegram_update.message.forward_date or telegram_update.message.date
-                self.timedelta = telegram_update.message.date - telegram_update.message.forward_date \
-                    if telegram_update.message.forward_date else datetime.timedelta(0)
+        if telegram_update and telegram_update.message and telegram_update.message.forward_date:
+            self.date = telegram_update.message.forward_date.astimezone(settings.timezone)
+            self.timedelta = self.telegram_update.message.date.astimezone(settings.timezone) - self.date
+        elif telegram_update and telegram_update.message:
+            self.date = telegram_update.message.date.astimezone(settings.timezone)
+            self.timedelta = datetime.timedelta(0)
 
     def to_json(self):
         from utils.functions import dict_serialize

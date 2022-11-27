@@ -722,7 +722,7 @@ class StatModule(BasicModule):  # TODO: Провести оптимизацию
             )
         else:
             message = update.telegram_update.callback_query.message
-            if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
+            if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
                 return self.message_manager.send_message(
                     chat_id=invoker.chat_id,
                     text=formatted_report,
@@ -835,7 +835,7 @@ class StatModule(BasicModule):  # TODO: Провести оптимизацию
             )
         else:
             message = update.telegram_update.callback_query.message
-            if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
+            if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
                 return self.message_manager.send_message(
                     chat_id=invoker.chat_id,
                     text=formatted_report,

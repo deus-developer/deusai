@@ -35,7 +35,7 @@ class Group(BaseModel, Model):
 
     class Meta(object):
         indexes = (
-            (('name', 'group_type'), True),
+            (('name', 'type'), True),
         )
         only_save_dirty = True
 

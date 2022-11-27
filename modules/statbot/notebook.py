@@ -3,6 +3,7 @@ import datetime
 from pytils import dt
 from telegram.ext import Dispatcher
 
+from config import settings
 from core import (
     EventManager,
     Handler as InnerHandler,
@@ -47,18 +48,20 @@ class NotebookModule(BasicModule):  # TODO: Добавить человекоч�
 
     def _parse_notebook(self, update: Update):
         notebook = update.notebook
-        timeout = datetime.datetime.now() - datetime.timedelta(seconds=10)
+        now = datetime.datetime.now()
+        timeout = datetime.timedelta(seconds=10)
 
-        if update.telegram_update.message.forward_date < timeout:
+        if update.timedelta >= timeout:
             return
-        if update.player.last_update < timeout:
+
+        if now - update.player.last_update < timeout:
             return
 
         if not update.player.notebook:
             update.player.notebook = Notebook.create(last_update=timeout - datetime.timedelta(seconds=10))
             update.player.save()
 
-        if update.player.notebook.last_update > update.telegram_update.message.forward_date:
+        if update.player.notebook.last_update > update.telegram_update.message.forward_date.astimezone(settings.timezone):
             return self.message_manager.send_message(
                 chat_id=update.telegram_update.message.chat_id,
                 text='Ты пытаешься отправить более старый дневник.'
