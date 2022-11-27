@@ -142,14 +142,14 @@ class InventoryModule(BasicModule):  # TODO: ДОВЕСТИ ДО КОНЦА, Н�
             .order_by(InventoryItem.amount.desc())
         if not items:
             formatted_report += '\t\t\t\t\t\t<code>ТУТ ПУСТА</code>'
-            if update.telegram_update.callback_query.message.date - datetime.datetime.utcnow() > datetime.timedelta(hours=12):
+            if update.telegram_update.callback_query.message.date - datetime.datetime.now() > datetime.timedelta(hours=12):
                 return update.telegram_update.callback_query.message.reply_text(text=formatted_report, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
             return update.telegram_update.callback_query.edit_message_text(text=formatted_report, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 
         for item in items:
             formatted_report += f'\t▫️{item.item.name} x{item.amount}\n' if item.amount != 1 else f'\t▫️{item.item.name}\n'
 
-        if update.telegram_update.callback_query.message.date - datetime.datetime.utcnow() > datetime.timedelta(hours=12):
+        if update.telegram_update.callback_query.message.date - datetime.datetime.now() > datetime.timedelta(hours=12):
             return update.telegram_update.callback_query.message.reply_text(text=formatted_report, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
         return update.telegram_update.callback_query.edit_message_text(text=formatted_report, reply_markup=InlineKeyboardMarkup(buttons), parse_mode='HTML')
 

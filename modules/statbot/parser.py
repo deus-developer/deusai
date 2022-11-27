@@ -572,7 +572,6 @@ class ParserModule(BasicModule):
             r'🗣Харизма:\s+(?P<oratory>\d+)(\s*\([^)]*\))?\s*'
             r'🤸🏽‍♂️Ловкость:\s+(?P<agility>\d+)(\s*\([^)]*\))?\s*'
             r'(?:💡Умения /perks\s+)?'
-            r'(?:⭐️Испытания.+)?'
             r'🔋Выносливость:\s+(?P<stamina_now>\d+)/(?P<stamina>\d+)\s*/ref\s+'
             r'📍(?P<location>[^\n]*),\s*👣\s*(?P<distance>\d+)км\.\s*(?P<on_raid>👊)?'
         )
@@ -1023,7 +1022,7 @@ class ParserModule(BasicModule):
         dzen_match = self.re_dzen.search(tail)
         dzen_bars_match = self.re_dzen_bars.search(tail)
         pr.profile = Profile(match, id_match, dzen_match, dzen_bars_match)
-        pr.profile.stats.time = message.forward_date.astimezone(settings.timezone)
+        pr.profile.stats.time = message.forward_date
         self._parse_raid(message, pr)
         if getattr(pr, 'raid', False):
             pr.profile.raid = pr.raid
@@ -1061,7 +1060,7 @@ class ParserModule(BasicModule):
         text = message.text or ''
         m = self.raid_format.search(text)
         if m:
-            pr.raid = Raid(message.forward_date.astimezone(settings.timezone), m)
+            pr.raid = Raid(message.forward_date, m)
             pr.raid.km, pr.raid.cups, pr.raid.boxes = self._parse_raid_msg(pr.raid.text)
 
     def _parse_gang(self, msg: telegram.Message, pres: GroupParseResult):

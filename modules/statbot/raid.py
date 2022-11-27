@@ -349,7 +349,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{raid_time}</b>\n\t\t\t<code>Выбирайте рейдовый КМ:</code>'
         if update.telegram_update.callback_query:
-            if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
+            if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
                 self.message_manager.send_message(
                     chat_id=message.chat_id, reply_markup=reply_markup,
                     text=text, parse_mode='HTML', is_queued=False
@@ -392,7 +392,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
         reply_markup = InlineKeyboardMarkup([*reply_markup, [InlineKeyboardButton(text='Назад ◀️', callback_data='raid_menu')]])
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Выбирайте рейдовую группу:</code>'
-        if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
+        if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
             self.message_manager.send_message(
                 chat_id=message.chat_id, reply_markup=reply_markup,
                 text=text, parse_mode='HTML', is_queued=False
@@ -428,7 +428,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
         reply_markup, text = self._generate_group_menu(group, km)
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Установите рейдеров <b>{group.name}</b> на точку:</code>'
-        if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
+        if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
             self.message_manager.send_message(
                 chat_id=message.chat_id, reply_markup=reply_markup,
                 text=text, parse_mode='HTML', is_queued=False
@@ -481,7 +481,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
         reply_markup, text = self._generate_group_menu(group, km)
 
         text = f'<i>🍀Мастер установки ПИНа🍀</i>\n\t\t\tна <b>{next_raid()}</b> в {km}км\n\t\t\t<code>Установите рейдеров <b>{group.name}</b> на точку:</code>'
-        if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
+        if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
             self.message_manager.send_message(
                 chat_id=message.chat_id, reply_markup=reply_markup,
                 text=text, parse_mode='HTML', is_queued=False
@@ -546,7 +546,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
 
         reply_markup, text = self._generate_group_menu(group, km)
 
-        if datetime.datetime.utcnow() - message.date > datetime.timedelta(hours=12):
+        if datetime.datetime.now() - message.date > datetime.timedelta(hours=12):
             self.message_manager.send_message(
                 chat_id=message.chat_id, reply_markup=reply_markup,
                 text=text, parse_mode='HTML', is_queued=False
@@ -1267,7 +1267,7 @@ class RaidModule(BasicModule):  # TODO: Провести оптимизацию
         if not raid:
             return
 
-        if message.date.astimezone(settings.timezone) - raid.time > datetime.timedelta(hours=8):
+        if message.date - raid.time > datetime.timedelta(hours=8):
             return
 
         raid_assign = player.raid_near_time(raid.time - datetime.timedelta(seconds=5))

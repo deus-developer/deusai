@@ -10,7 +10,6 @@ from telegram.ext import (
 )
 from telegram.ext.filters import Filters
 
-from config import settings
 from core import (
     CommandFilter,
     EventManager,
@@ -82,7 +81,7 @@ class RaidResultModule(BasicModule):  # TODO: Полностью перераб�
     def _parse_raid_result(self, bot: telegram.Bot, update: telegram.Update):
         message = update.channel_post or update.message
         post_id = message.message_id or message.forward_from_chat.id
-        date = message.date.astimezone(settings.timezone).replace(minute=0, second=0, microsecond=0)
+        date = message.date.replace(minute=0, second=0, microsecond=0)
         if RaidResult.exist_rows(date):
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
@@ -237,7 +236,7 @@ class RaidResultModule(BasicModule):  # TODO: Полностью перераб�
                 text=f'Группы "{group_name}" не существует.'
             )
         period = int(match.group('period'))
-        date_start = message.date.astimezone(settings.timezone).replace(hour=0, minute=0, second=0, microsecond=0) - datetime.timedelta(days=period)
+        date_start = message.date.replace(hour=0, minute=0, second=0, microsecond=0) - datetime.timedelta(days=period)
 
         pls = group.members
         result_dicts = {}

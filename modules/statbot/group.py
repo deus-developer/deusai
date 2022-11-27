@@ -5,7 +5,6 @@ from telegram import ParseMode
 from telegram.ext import Dispatcher
 from telegram.utils.helpers import mention_html
 
-from config import settings
 from core import (
     CommandFilter,
     EventManager,
@@ -243,10 +242,10 @@ class GroupModule(BasicModule):
     def gang_handler(self, update: GroupParseResult):  # TODO: Оптимизировать работу с базой => Переработать
         parse_result = update
         message = parse_result.telegram_update.message
-        gang = self.__handle_group(parse_result.gang, 'gang', message.forward_date.astimezone(settings.timezone))
+        gang = self.__handle_group(parse_result.gang, 'gang', message.forward_date)
         if not gang:
             return
-        goat = self.__handle_group(parse_result.gang.goat, 'goat', message.forward_date.astimezone(settings.timezone))
+        goat = self.__handle_group(parse_result.gang.goat, 'goat', message.forward_date)
         if not goat:
             return
         missed = []

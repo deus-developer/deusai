@@ -153,7 +153,7 @@ class KarmaModule(BasicModule):
             if not pl:
                 continue
 
-            raid_assign = pl.raid_near_time(message.forward_date.astimezone(settings.timezone))
+            raid_assign = pl.raid_near_time(message.forward_date)
             if not (raid_assign and update.date > raid_assign.last_update):
                 continue
 
