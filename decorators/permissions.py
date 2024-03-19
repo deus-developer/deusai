@@ -1,51 +1,36 @@
 import functools
-
-from core import Update
 import logging
+
 from config import settings
-from models import (
-    Rank,
-    Group
-)
+from core import InnerUpdate
+from models import Group
 
 
-def or_(*args):
-    def calc(update: Update, **kwargs):
-        return any(map(lambda x: x(update, **kwargs), args))
-
-    return calc
-
-
-def and_(*args):
-    def calc(update: Update, **kwargs):
-        return all(map(lambda x: x(update, **kwargs), args))
+def or_(*filters):
+    def calc(update: InnerUpdate, *args, **kwargs):
+        return any(
+            func(update, *args, **kwargs)
+            for func in filters
+        )
 
     return calc
 
 
-def is_admin(update: Update, **kwargs):
+def and_(*filters):
+    def calc(update: InnerUpdate, *args, **kwargs):
+        return all(
+            func(update, *args, **kwargs)
+            for func in filters
+        )
+
+    return calc
+
+
+def is_admin(update: InnerUpdate, *args, **kwargs):
     return update.invoker.is_admin
 
 
-def is_rank(rank_name='Полковник'):
-    def handler(update: Update = None, **kwargs):
-        if not (update or kwargs.get('player', None)):
-            return False
-
-        rank = Rank.get_or_none(name=rank_name)
-        if not rank:
-            return False
-        player = kwargs.get('player', None) or update.player
-
-        if player.rank.priority < rank.priority:
-            return False
-
-        return True
-
-    return functools.partial(handler)
-
-
-def is_lider(update: Update, **kwargs):
+def is_lider(update: InnerUpdate, *args, **kwargs):
     grs = update.command.argument.split()
     if not grs:
         return False
@@ -54,19 +39,22 @@ def is_lider(update: Update, **kwargs):
     return gr and gr in update.player.liders
 
 
-def is_developer(update: Update, **kwargs):
+def is_developer(update: InnerUpdate, *args, **kwargs):
     return update.invoker.chat_id == settings.ADMIN_CHAT_ID
 
 
-def self_(update: Update, **kwargs):
+def self_(update: InnerUpdate, *args, **kwargs):
     players = kwargs.get('players', [])
     users = kwargs.get('users', [])
     if not players and not users:
         return True
+
     if len(players) == 1 and players[0] == update.player:
         return True
+
     if len(users) == 1 and users[0] == update.invoker:
         return True
+
     return False
 
 
@@ -75,7 +63,7 @@ def permissions(permit_expression):
         logger = logging.getLogger(func.__module__)
 
         @functools.wraps(func)
-        def decorator(self, update: Update, *args, **kwargs):
+        def decorator(self, update: InnerUpdate, *args, **kwargs):
             invoker = update.invoker
             player = update.player
             if not player:
@@ -84,16 +72,18 @@ def permissions(permit_expression):
                     text='Я тебя не знаю, пришли свой полный пип-бой, '
                          'чтобы познакомиться'
                 )
-            if not permit_expression(update, **kwargs):
+
+            if not permit_expression(update, *args, **kwargs):
                 logger.info(f'Permission denied (@{invoker.username})')
-                if update.telegram_update.message.chat_id != invoker.chat_id:
+                if update.effective_chat_id != invoker.chat_id:
                     return
                 return self.message_manager.send_message(
                     chat_id=invoker.chat_id,
                     text='Доступ запрещен'
                 )
+
             logger.info(f'Permission granted (@{invoker.username})')
-            return func(self, update=update, *args, **kwargs)
+            return func(self, update, *args, **kwargs)
 
         return decorator
 

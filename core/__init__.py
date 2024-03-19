@@ -1,5 +1,5 @@
 from .command import Command
 from .event_manager import EventManager
-from .handler import Handler
-from .update import Update, UpdateFilter, CommandFilter, CommandNameFilter, UpdateCallableFilter
+from .handler import InnerHandler
 from .message_manager import MessageManager, CallbackResults
+from .update import InnerUpdate, UpdateFilter, CommandFilter, CommandNameFilter

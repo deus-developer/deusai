@@ -1,10 +1,8 @@
+import datetime
 import logging.config
 import os
-import datetime
-from dotenv import (
-    find_dotenv,
-    load_dotenv
-)
+
+from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
 BASEDIR = os.path.dirname(__file__)
@@ -14,39 +12,18 @@ class ImproperlyConfigured(Exception):
     """Something is somehow improperly configured"""
 
 
-class HideTokenFilter(logging.Filter):
-    """Logging filter that replaces telegram token with ********"""
-
-    def __init__(self, token):
-        super(HideTokenFilter, self).__init__()
-        self._token = token
-
-    def filter(self, record):
-        record.msg = self._hide(record.msg)
-        if isinstance(record.args, dict):
-            for key in record.args.keys():
-                record.args[key] = self._hide(record.args[key])
-        else:
-            record.args = tuple(self._hide(arg) for arg in record.args)
-        return True
-
-    def _hide(self, msg):
-        if isinstance(msg, str):
-            return msg.replace(self._token, '********')
-        return msg
-
-
 class Config(object):
     """Base class for app configuration"""
     DEBUG = False
     TESTING = False
 
-    DATABASE_URL = os.getenv(
-        'DATABASE_URL',
-        'sqlite:///' + os.path.join(BASEDIR, 'db.sqlite')
-        )
+    DATABASE_URL = os.getenv('DATABASE_URL',
+                             'sqlite:///' + os.path.join(BASEDIR, 'db.sqlite'))
+    # LEGACY_DATABASE_PATH = os.getenv('LEGACY_DB_PATH', 'db.sqlite')
 
     TG_TOKEN = os.getenv('TG_TOKEN')
+
+    TG_PROXY_URL = os.getenv('TG_PROXY_URL')
 
     ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
@@ -71,20 +48,11 @@ class Config(object):
                         '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
                 },
             },
-            'filters': {
-                'hidetoken': {
-                    '()': HideTokenFilter,
-                    'token': self.TG_TOKEN
-                }
-            },
             'handlers': {
                 'default': {
                     'level': self.LOG_LEVEL,
                     'formatter': 'standard',
                     'class': 'logging.StreamHandler',
-                    'filters': [
-                        'hidetoken',
-                    ],
                 },
             },
             'loggers': {
@@ -98,34 +66,16 @@ class Config(object):
 
     def __init__(self):
         if not self.TG_TOKEN:
-            raise ImproperlyConfigured(
-                'You must set TG_TOKEN enviroment variable'
-            )
-        try:
-            self.ADMIN_CHAT_ID = int(self.ADMIN_CHAT_ID)
-        except ValueError:
-            raise ImproperlyConfigured('ADMIN_CHAT_ID must be integer')
-        try:
-            self.GOAT_ADMIN_CHAT_ID = int(self.GOAT_ADMIN_CHAT_ID)
-        except ValueError:
-            raise ImproperlyConfigured('GOAT_ADMIN_CHAT_ID must be integer')
+            raise ImproperlyConfigured('You must set TG_TOKEN enviroment variable')
 
-        try:
-            self.CRM_SHOP_CHAT_ID = int(self.CRM_SHOP_CHAT_ID)
-        except ValueError:
-            self.CRM_SHOP_CHAT_ID = self.ADMIN_CHAT_ID
-
-        try:
-            self.UNKOWN_CHAT_ID = int(self.UNKOWN_CHAT_ID)
-        except ValueError:
-            self.UNKOWN_CHAT_ID = self.ADMIN_CHAT_ID
-
-        try:
-            self.NOTIFY_CHAT_ID = int(self.NOTIFY_CHAT_ID)
-        except ValueError:
-            self.NOTIFY_CHAT_ID = self.ADMIN_CHAT_ID
+        self.ADMIN_CHAT_ID = int(self.ADMIN_CHAT_ID)
+        self.GOAT_ADMIN_CHAT_ID = int(self.GOAT_ADMIN_CHAT_ID)
+        self.CRM_SHOP_CHAT_ID = int(self.CRM_SHOP_CHAT_ID)
+        self.UNKOWN_CHAT_ID = int(self.UNKOWN_CHAT_ID)
+        self.NOTIFY_CHAT_ID = int(self.NOTIFY_CHAT_ID)
 
         self.BASEDIR = BASEDIR
+
         logging.config.dictConfig(self.LOGGING_CONFIG)
         logger = logging.getLogger('apscheduler.executors.default')
         logger.setLevel(logging.WARNING)
@@ -133,12 +83,6 @@ class Config(object):
 
 class DevelopmentConfig(Config):
     DEBUG = True
-
-
-class TestingConfig(Config):
-    TESTING = True
-    DEBUG = True
-    DATABASE_URL = os.environ.get('TEST_DATABASE_URL') or 'sqlite:///:memory:'
 
 
 class ProductionConfig(Config):
@@ -155,12 +99,6 @@ class ProductionConfig(Config):
                         '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
                 },
             },
-            'filters': {
-                'hidetoken': {
-                    '()': HideTokenFilter,
-                    'token': self.TG_TOKEN
-                }
-            },
             'handlers': {
                 'default': {
                     'level': self.LOG_LEVEL,
@@ -170,9 +108,6 @@ class ProductionConfig(Config):
                     'mode': 'a',
                     'maxBytes': 1 << 20,  # 1M
                     'backupCount': 5,
-                    'filters': [
-                        'hidetoken',
-                    ],
                 },
             },
             'loggers': {
@@ -185,18 +120,9 @@ class ProductionConfig(Config):
         }
 
 
-class HerokuConfig(Config):
-    DEBUG = False
-    TESTING = False
-
-
-# При инициализации бота должно указываться название запускаемой конфигурации,
-#   либо по умолчанию будет режим dev
 _config_relation = {
     'development': DevelopmentConfig,
-    'testing': TestingConfig,
     'production': ProductionConfig,
-    'heroku': HerokuConfig,
     'default': DevelopmentConfig
 }
 

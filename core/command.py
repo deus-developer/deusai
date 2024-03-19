@@ -1,4 +1,6 @@
 import re
+from typing import Optional
+
 from telegram import Message
 
 command_pattern = r"/(?P<command>(?P<name>[^\s_@]+)_?(?P<subcomand>[^\s@]*))@?(?P<botname>\S*)\s*(?P<args>.*)"
@@ -7,13 +9,15 @@ command_regexp = re.compile(command_pattern, re.DOTALL)
 
 class Command:
     def __init__(self, message: Message):
-        self.command = None
-        self.name = None
-        self.subcommand = None
-        self.bot_name = None
-        self.argument = None
+        self.command: Optional[str] = None
+        self.name: Optional[str] = None
+        self.subcommand: Optional[str] = None
+        self.bot_name: Optional[str] = None
+        self.argument: Optional[str] = None
+
         if not message:
             return
+
         text = message.text or message.caption or ''
 
         m = command_regexp.match(text)

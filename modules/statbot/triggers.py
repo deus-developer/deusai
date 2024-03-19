@@ -1,41 +1,28 @@
+import datetime
 import functools
+import html
 import os
 import re
 import time
-from pathlib import Path as path_file
+from pathlib import Path
+from typing import Dict, List, Tuple, Pattern, Match, Optional
 
 from pytils import dt
-from telegram.ext import (
-    Dispatcher,
-    MessageHandler
-)
+from telegram.ext import MessageHandler, Dispatcher
 from telegram.ext.filters import Filters
 
-from core import (
-    CommandFilter,
-    CommandNameFilter,
-    EventManager,
-    Handler as InnerHandler,
-    MessageManager,
-    Update
-)
-from decorators import (
-    command_handler,
-    permissions
-)
+from core import EventManager, MessageManager, InnerHandler, CommandFilter, CommandNameFilter, InnerUpdate
+from decorators import command_handler, permissions
 from decorators.chat import get_chat
 from decorators.permissions import is_admin
 from decorators.update import inner_update
 from decorators.users import get_player
-from models import (
-    TelegramUser,
-    Trigger
-)
+from models import Trigger, TelegramUser
 from modules import BasicModule
 from utils.functions import CustomInnerFilters
 
 
-class TriggersModule(BasicModule):  # TODO: Переработать
+class TriggersModule(BasicModule):
     """
     message sending
     """
@@ -45,37 +32,43 @@ class TriggersModule(BasicModule):  # TODO: Переработать
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('trigger_add'), self._trigger_add,
+                CommandFilter('trigger_add'),
+                self._trigger_add,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('trigger_remove'), self._trigger_remove,
+                CommandFilter('trigger_remove'),
+                self._trigger_remove,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('triggers'), self._triggers_ls(),
+                CommandFilter('triggers'),
+                self._triggers_ls(),
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('triggers_r'), self._triggers_ls(remove=True),
+                CommandFilter('triggers_r'),
+                self._triggers_ls(remove=True),
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('trigger_help'), self._trigger_help,
+                CommandFilter('trigger_help'),
+                self._trigger_help,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         self.add_inner_handler(
             InnerHandler(
-                CommandNameFilter('trrem'), self._trigger_remove_id,
+                CommandNameFilter('trrem'),
+                self._trigger_remove_id,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
@@ -83,14 +76,16 @@ class TriggersModule(BasicModule):  # TODO: Переработать
         self.add_handler(MessageHandler(Filters.text | Filters.command, self._triggered))
         self.add_handler(MessageHandler(Filters.status_update.new_chat_members, self._triggered_actions))
 
-        self.regexps = {
+        self.regexps: Dict[int, List[Tuple[Pattern[str], int, Dict[str, bool]]]] = {}
 
-        }
-        self._load_regexps()
         super().__init__(event_manager, message_manager, dispatcher)
 
-    def _load_regexps(self):
-        self.regexps = {}
+    def startup(self):
+        self.refresh_regexes()
+
+    def refresh_regexes(self):
+        self.regexps.clear()
+
         for trigger in Trigger.select():
             regexp = self._generate_regexp(trigger)
             options = {
@@ -98,27 +93,27 @@ class TriggersModule(BasicModule):  # TODO: Переработать
                 'pin': trigger.pin_message,
                 'repling': trigger.repling
             }
-            lst = self.regexps.get(trigger.chat.chat_id, None)
-            if not lst:
-                lst = []
-            lst.append((regexp, trigger.id, options))
-            self.regexps.update(
-                {
-                    trigger.chat.chat_id: lst
-                }
-            )
 
-    # left_chat_member
-    # new_chat_members
+            regexes = self.regexps.get(trigger.chat.chat_id)
+            if regexes is None:
+                regexes = []
+
+            regexes.append((regexp, trigger.id, options))
+            self.regexps[trigger.chat.chat_id] = regexes
+
     def _generate_regexp(self, trigger):
-        re_ = r'[\s\S]*(?P<trigger>{})[\s\S]*' if trigger.in_message else r'(?P<trigger>{})'
-        regexp = re.compile(re_.format(re.escape(trigger.request)), re.IGNORECASE) if trigger.ignore_case else re.compile(re_.format(re.escape(trigger.request)))
-        return regexp
+        regex = r'[\s\S]*(?P<trigger>{})[\s\S]*' if trigger.in_message else r'(?P<trigger>{})'
+        trigger_regex = regex.format(re.escape(trigger.request))
+
+        if trigger.ignore_case:
+            return re.compile(trigger_regex, re.IGNORECASE)
+
+        return re.compile(trigger_regex)
 
     @permissions(is_admin)
-    def _trigger_help(self, update: Update):
+    def _trigger_help(self, update: InnerUpdate):
         self.message_manager.send_message(
-            chat_id=update.telegram_update.message.chat_id,
+            chat_id=update.effective_chat_id,
             text='<b>Инструкция по флагам</b>\n'
                  'Флаги прописывать под общим "-", пример: -rma\n'
                  '1. <code>-r</code> Привязка к регистру\n'
@@ -126,34 +121,36 @@ class TriggersModule(BasicModule):  # TODO: Переработать
                  '3. <code>-a</code> Триггер только для админов\n'
                  '4. <code>-p</code> Запинить сообщение после отправки\n'
                  '5. <code>-u</code> Проверить уникальность триггера при создании\n'
-                 '6. <code>-n</code> Отправлять ответ не реплаем на сообщение', parse_mode='HTML'
+                 '6. <code>-n</code> Отправлять ответ не реплаем на сообщение'
         )
 
     @inner_update()
     @get_player
     @get_chat
-    def _triggered(self, update: Update, *args, **kwargs):
+    def _triggered(self, update: InnerUpdate):
         message = update.telegram_update.message
 
         if not update.chat:
             return
 
-        triggers = self.regexps.get(message.chat_id, None)
+        triggers = self.regexps.get(message.chat_id)
         if not triggers:
             return
 
-        trigger_r = message.text
-        if trigger_r in ['!welcome-new', '!welcome-old']:
+        trigger_string = message.text
+        if trigger_string in ['!welcome-new', '!welcome-old']:
             return
-        for regexp, id_, options in triggers:
-            m = regexp.match(trigger_r)
-            if not m:
+
+        for pattern, trigger_id, options in triggers:
+            match = pattern.match(trigger_string)
+            if match is None:
                 continue
+
             if options.get('is_admin', False) > update.invoker.is_admin:
                 continue
 
-            trigger = Trigger.get_or_none(Trigger.id == id_)
-            if not trigger:
+            trigger = Trigger.get_or_none(Trigger.id == trigger_id)
+            if trigger is None:
                 continue
 
             repling = options.get('repling', True)
@@ -161,6 +158,7 @@ class TriggersModule(BasicModule):  # TODO: Переработать
             mess = self._send_answer(update, trigger, repling)
             if not mess:
                 return
+
             if pin:
                 try:
                     self.message_manager.bot.pin_chat_message(
@@ -169,58 +167,121 @@ class TriggersModule(BasicModule):  # TODO: Переработать
                         disable_notification=False
                     )
                 except (Exception,):
-                    self.logger.warning(f'Не смог запинить триггер {id_}')
+                    self.logger.warning(f'Не смог запинить триггер {trigger_id}')
+
+    def _trigger_formatter(
+        self,
+        text: str,
+        username: Optional[str],
+        first_name: Optional[str],
+        last_name: Optional[str],
+        is_admin_flag: Optional[bool],
+        is_banned_flag: Optional[bool],
+        last_seen_date: Optional[datetime.datetime],
+        user_id: Optional[int],
+        chat_id: Optional[int]
+    ):
+        if is_admin_flag is None:
+            is_admin_emoji = ''
+        elif is_admin_flag:
+            is_admin_emoji = '✅'
+        else:
+            is_admin_emoji = '❌'
+
+        if is_banned_flag is None:
+            is_banned_emoji = ''
+        elif is_banned_flag:
+            is_banned_emoji = '✅'
+        else:
+            is_banned_emoji = '❌'
+
+        if last_seen_date is None:
+            last_seen_at_text = ''
+        else:
+            last_seen_at_text = dt.distance_of_time_in_words(last_seen_date, to_time=time.time())
+
+        user_id_text = str(user_id) if user_id else ''
+        chat_id_text = str(chat_id) if chat_id else ''
+
+        return (
+            text.replace('{username}', html.escape(username or ''))
+            .replace('{first_name}', html.escape(first_name or ''))
+            .replace('{last_name}', html.escape(last_name or ''))
+            .replace('{is_admin}', is_admin_emoji)
+            .replace('{is_banned}', is_banned_emoji)
+            .replace('{last_seen}', last_seen_at_text)
+            .replace('{user_id}', user_id_text)
+            .replace('{chat_id}', chat_id_text)
+        )
 
     @inner_update()
     @get_player
     @get_chat
-    def _triggered_actions(self, update: Update, *args, **kwargs):
+    def _triggered_actions(self, update: InnerUpdate):
         message = update.telegram_update.message
-        if not update.chat:
+        if update.chat is None:
             return
-        triggers = self.regexps.get(message.chat_id, None)
+
+        triggers = self.regexps.get(message.chat_id)
         if not triggers:
             return
 
-        triggers_new = []
-        triggers_old = []
-        for regexp, id_, options in triggers:
-            new = regexp.match('!welcome-new')
-            old = regexp.match('!welcome-old')
-            if new:
-                triggers_new.append((id_, options))
-            if old:
-                triggers_old.append((id_, options))
+        new_player_triggers: List[Tuple[int, Dict[str, bool]]] = []
+        old_player_triggers: List[Tuple[int, Dict[str, bool]]] = []
+
+        for regexp, trigger_id, options in triggers:
+            if regexp.match('!welcome-new'):
+                new_player_triggers.append((trigger_id, options))
+
+            if regexp.match('!welcome-old'):
+                old_player_triggers.append((trigger_id, options))
 
         for user in message.new_chat_members:
-            tguser = TelegramUser.get_or_none(user_id=user.id)
-            if tguser and tguser.username:
-                formatter = lambda x: x.replace('{username}', tguser.username or 'It`s Username') \
-                    .replace('{first_name}', tguser.first_name or '') \
-                    .replace('{last_name}', tguser.last_name or '') \
-                    .replace('{is_admin}', '✅' if tguser.is_admin else '❌') \
-                    .replace('{is_banned}', '✅' if tguser.is_banned else '❌') \
-                    .replace('{last_seen}', dt.distance_of_time_in_words(tguser.last_seen_date, to_time=time.time())) \
-                    .replace('{user_id}', str(tguser.user_id)) \
-                    .replace('{chat_id}', str(tguser.chat_id))
+            telegram_user = TelegramUser.get_or_none(user_id=user.id)
+            if telegram_user and telegram_user.username:
+                formatter = functools.partial(
+                    self._trigger_formatter,
+                    username=telegram_user.username,
+                    first_name=telegram_user.first_name,
+                    last_name=telegram_user.last_name,
+                    is_admin=telegram_user.is_admin,
+                    is_banned=telegram_user.is_banned,
+                    last_seen_date=telegram_user.last_seen_date,
+                    user_id=telegram_user.user_id,
+                    chat_id=telegram_user.chat_id
+                )
             else:
-                formatter = lambda x: x.replace('{username}', user.username or 'It`s Username') \
-                    .replace('{first_name}', user.first_name or '') \
-                    .replace('{last_name}', user.last_name or '') \
-                    .replace('{is_admin}', '❌') \
-                    .replace('{is_banned}', '❌') \
-                    .replace('{last_seen}', '') \
-                    .replace('{user_id}', str(user.id)) \
-                    .replace('{chat_id}', str(user.id))
-            for id_, options in triggers_new if not (tguser and tguser.player.exists() and tguser.player.get().is_active) else triggers_old:
-                trigger = Trigger.get_or_none(Trigger.id == id_)
-                if not trigger:
+                formatter = functools.partial(
+                    self._trigger_formatter,
+                    username=user.username,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    is_admin=False,
+                    is_banned=False,
+                    last_seen_date=None,
+                    user_id=user.id,
+                    chat_id=user.id
+                )
+
+            if telegram_user is None:
+                player = None
+            else:
+                player = telegram_user.player.get_or_none()
+
+            if player and player.is_active:
+                triggers_ = old_player_triggers
+            else:
+                triggers_ = new_player_triggers
+
+            for trigger_id, options in triggers_:
+                trigger = Trigger.get_or_none(Trigger.id == trigger_id)
+                if trigger is None:
                     continue
+
                 repling = options.get('repling', True)
-                pin = options.get('pin', False)
                 self._send_answer(update, trigger, reply=repling, formatter=formatter)
 
-    def _send_answer(self, update, trigger, reply=True, formatter=None):
+    def _send_answer(self, update, trigger, reply: bool = True, formatter=None):
         message = update.telegram_update.message
 
         def format_text(text):
@@ -229,12 +290,14 @@ class TriggersModule(BasicModule):  # TODO: Переработать
                 .replace('{last_name}', update.invoker.last_name or '') \
                 .replace('{is_admin}', '✅' if update.invoker.is_admin else '❌') \
                 .replace('{is_banned}', '✅' if update.invoker.is_banned else '❌') \
-                .replace('{last_seen}', dt.distance_of_time_in_words(update.invoker.last_seen_date, to_time=time.time())) \
+                .replace('{last_seen}',
+                         dt.distance_of_time_in_words(update.invoker.last_seen_date, to_time=time.time())) \
                 .replace('{user_id}', str(update.invoker.user_id)) \
                 .replace('{chat_id}', str(update.invoker.chat_id))
 
         if not formatter:
             formatter = format_text
+
         kwargs = {
             'chat_id': message.chat_id,
             'is_queued': False,
@@ -243,13 +306,8 @@ class TriggersModule(BasicModule):  # TODO: Переработать
             'title': formatter(trigger.answer),
         }
         if reply:
-            kwargs.update(
-                {
-                    'reply_to_message_id': message.message_id
-                }
-            )
+            kwargs.update({'reply_to_message_id': message.message_id})
 
-        m = False
         if trigger.type == 'text':
             m = self.message_manager.send_message(parse_mode='HTML', **kwargs)
         elif trigger.type == 'audio':
@@ -257,7 +315,7 @@ class TriggersModule(BasicModule):  # TODO: Переработать
         elif trigger.type == 'document':
             m = self.message_manager.bot.send_document(
                 document=open(trigger.file_path, 'rb'),
-                filename=f'{formatter(trigger.answer)}{path_file(trigger.file_path).suffix}',
+                filename=f'{formatter(trigger.answer)}{Path(trigger.file_path).suffix}',
                 **kwargs
             )
         elif trigger.type == 'photo':
@@ -271,7 +329,7 @@ class TriggersModule(BasicModule):  # TODO: Переработать
         return m
 
     def _triggers_ls(self, remove=False):
-        def handler(self, update: Update, *args, **kwargs):
+        def handler(self, update: InnerUpdate):
             if not update.chat:
                 return
             output = ['<b>Список триггеров:</b>']
@@ -279,34 +337,31 @@ class TriggersModule(BasicModule):  # TODO: Переработать
                 output.append(f'\t\t\t\t{idx}. {trigger.request} - {trigger.type}')
                 if remove:
                     output.append(f'\t\t\t\t\t-> /trrem_{trigger.id}')
-            self.message_manager.send_message(
-                chat_id=update.telegram_update.message.chat_id,
-                text='\n'.join(output),
-                parse_mode='HTML'
-            )
+            self.message_manager.send_message(chat_id=update.effective_chat_id,
+                                              text='\n'.join(output),
+                                              parse_mode='HTML')
 
         return functools.partial(handler, self)
 
     @permissions(is_admin)
     @command_handler(
         regexp=re.compile(r'(-(?P<flags>\w+))?\s*(?P<trigger>.+)'),
-        argument_miss_msg='Пришли сообщение в формате "/trigger_add -flags Текст триггер"\nПодробнее про флаги: /trigger_help'
+        argument_miss_msg='Пришли сообщение в формате "/trigger_add -flags '
+                          'Текст триггер"\nПодробнее про флаги: /trigger_help'
     )
-    def _trigger_add(self, update: Update, match, *args, **kwargs):
+    def _trigger_add(self, update: InnerUpdate, match: Match):
         message = update.telegram_update.message
         reply = message.reply_to_message
         if not update.chat:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Команду /trigger_add можно вызвать <b>только в ГРУППЕ</b>',
-                parse_mode='HTML'
+                text=f'Команду /trigger_add можно вызвать <b>только в ГРУППЕ</b>'
             )
 
         if not reply:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Команду /trigger_add можно вызвать <b>только в ответ на текст триггера(ответ)</b>',
-                parse_mode='HTML'
+                text=f'Команду /trigger_add можно вызвать <b>только в ответ на текст триггера(ответ)</b>'
             )
 
         flags, trigger_r = match.group('flags', 'trigger')
@@ -320,12 +375,13 @@ class TriggersModule(BasicModule):  # TODO: Переработать
         repling = 'n' not in flags
         in_message = 'm' in flags
 
-        if unique_trigger and Trigger.select().where((Trigger.chat == update.chat) & (Trigger.request == trigger_r)).count():
+        if unique_trigger and Trigger.select().where(
+            (Trigger.chat == update.chat) & (Trigger.request == trigger_r)).count():
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Триггер реагирующий на:\n\t{trigger_r}\n\t<i>Уже существует.</i>',
-                parse_mode='HTML'
+                text=f'Триггер реагирующий на:\n\t{trigger_r}\n\t<i>Уже существует.</i>'
             )
+
         audio_ = reply.audio
         document_ = reply.document
         photo_ = reply.photo
@@ -361,35 +417,31 @@ class TriggersModule(BasicModule):  # TODO: Переработать
         if ignore_case:
             trigger_r = trigger_r.lower()
 
-        Trigger.create(
-            request=trigger_r,
-            type=type_,
-            file_path=file if file else '',
-            answer=answer_text,
-            chat=update.chat,
-            admin_only=admin_only,
-            ignore_case=ignore_case,
-            pin_message=pin_message,
-            repling=repling,
-            in_message=in_message
-        )
+        Trigger.create(request=trigger_r,
+                       type=type_,
+                       file_path=file if file else '',
+                       answer=answer_text,
+                       chat=update.chat,
+                       admin_only=admin_only,
+                       ignore_case=ignore_case,
+                       pin_message=pin_message,
+                       repling=repling,
+                       in_message=in_message
+                       )
 
-        self.message_manager.send_message(
-            chat_id=message.chat_id,
-            text='Вжух и я добавил триггер!\n\tСписок триггеров: /triggers'
-        )
+        self.message_manager.send_message(chat_id=message.chat_id,
+                                          text='Вжух и я добавил триггер!\n\tСписок триггеров: /triggers')
 
-        self._load_regexps()
+        self.refresh_regexes()
 
     @permissions(is_admin)
     @command_handler(argument_miss_msg='Пришли сообщение в формате "/trigger_remove Название"')
-    def _trigger_remove(self, update: Update, *args, **kwargs):
+    def _trigger_remove(self, update: InnerUpdate):
         message = update.telegram_update.message
         if not update.chat:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Команду /trigger_remove можно вызвать <b>только в ГРУППЕ</b>',
-                parse_mode='HTML'
+                text=f'Команду /trigger_remove можно вызвать <b>только в ГРУППЕ</b>'
             )
         trigger_r = update.command.argument
 
@@ -398,15 +450,15 @@ class TriggersModule(BasicModule):  # TODO: Переработать
         if not trigger:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Триггера "{trigger_r}" <b>не существует!</b>',
-                parse_mode='HTML'
+                text=f'Триггера "{trigger_r}" <b>не существует!</b>'
             )
+
         if len(trigger) > 1:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Триггеров "{trigger_r}" <b>много!</b>\nУдали его, через /triggers_r',
-                parse_mode='HTML'
+                text=f'Триггеров "{trigger_r}" <b>много!</b>\nУдали его, через /triggers_r'
             )
+
         trigger = trigger[0]
         trigger.delete_instance()
 
@@ -415,20 +467,19 @@ class TriggersModule(BasicModule):  # TODO: Переработать
 
         self.message_manager.send_message(
             chat_id=message.chat_id,
-            text=f'Триггер "{trigger_r}" <b>удалён навсегда!</b>',
-            parse_mode='HTML'
+            text=f'Триггер "{trigger_r}" <b>удалён навсегда!</b>'
         )
-        self._load_regexps()
+        self.refresh_regexes()
 
     @permissions(is_admin)
-    def _trigger_remove_id(self, update: Update, *args, **kwargs):
+    def _trigger_remove_id(self, update: InnerUpdate):
         message = update.telegram_update.message
         if not update.chat:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Команду /trrem можно вызвать <b>только в ГРУППЕ</b>',
-                parse_mode='HTML'
+                text=f'Команду /trrem можно вызвать <b>только в ГРУППЕ</b>'
             )
+
         trigger_id = update.command.subcommand
         if not trigger_id:
             return
@@ -438,31 +489,31 @@ class TriggersModule(BasicModule):  # TODO: Переработать
                 chat_id=message.chat_id,
                 text='ID должен быть числом'
             )
+
         trigger_id = int(trigger_id)
 
         trigger = Trigger.get_or_none(Trigger.id == trigger_id)
         if not trigger:
             return self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text=f'Триггера с user_id = {trigger_id} <b>не существует!</b>',
-                parse_mode='HTML'
+                text=f'Триггера с id = {trigger_id} <b>не существует!</b>'
             )
+
         trigger.delete_instance()
 
         self.message_manager.send_message(
             chat_id=message.chat_id,
-            text=f'Триггер с user_id={trigger_id} <b>удалён навсегда!</b>',
-            parse_mode='HTML'
+            text=f'Триггер с id={trigger_id} <b>удалён навсегда!</b>'
         )
-        self._load_regexps()
+        self.refresh_regexes()
 
     def download_file(self, object_):
         file = object_.get_file()
-        custom_path = f'files/triggers/{file.file_id}{path_file(file.file_path).suffix}'
+        custom_path = f'static/triggers/{file.file_id}{Path(file.file_path).suffix}'
         try:
             file.download(custom_path=custom_path)
         except (Exception,):
             self.logger.warning(f'Ошибка скачивания файла {file.file_id}')
-            return False
+            return
 
         return custom_path

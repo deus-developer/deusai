@@ -1,11 +1,10 @@
-import peewee
 import datetime
+
+import peewee
 from peewee import Model
 
-from models import (
-    BaseModel,
-    Player
-)
+from .base import BaseModel
+from .player import Player
 
 
 class SPItem(BaseModel, Model):

@@ -1,6 +1,9 @@
 import datetime
+from typing import Optional
+
 import peewee
 from playhouse.signals import Model
+
 from .base import BaseModel
 from .player import Player
 
@@ -22,16 +25,21 @@ class Group(BaseModel, Model):
     last_update = peewee.DateTimeField(default=datetime.datetime.now)
 
     @classmethod
-    def get_by_name(cls, group_name='', group_type: str = None) -> 'Group':
-        if group_name:
-            gr = cls.select().where(
-                (cls.name == group_name) |
-                (cls.alias == group_name)
-            )
-            if group_type:
-                gr = gr.filter(cls.type == group_type)
-            gr = gr.limit(1)
-            return gr[0] if gr else None
+    def get_by_name(
+        cls,
+        group_name: str,
+        group_type: Optional[str] = None
+    ) -> Optional['Group']:
+        where_stmt = (cls.name == group_name) | (cls.alias == group_name)
+        select_stmt = cls.select().where(where_stmt)
+
+        if group_type:
+            select_stmt = select_stmt.filter(cls.type == group_type)
+
+        select_stmt = select_stmt.limit(1)
+        groups = select_stmt
+        if groups:
+            return groups[0]
 
     class Meta(object):
         indexes = (

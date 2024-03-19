@@ -1,15 +1,15 @@
 import datetime
 import enum
+from typing import Optional
 
 import peewee
 from playhouse.signals import Model
 
-from utils import next_raid
-from utils.functions import user_id_encode
-from ww6StatBotWorld import Wasteland
+from utils import get_next_raid_date
+from utils.functions import telegram_user_id_encode
+from wasteland_wars import constants
 from .base import BaseModel
 from .player import Player
-from .radar import Radar
 
 
 class RaidStatus(enum.IntEnum):
@@ -47,7 +47,7 @@ def make_menu(status: RaidStatus):
     return "\n\n".join([comm[b] for b in buttons]) + "\n\n❓ /raidpin_help справочная информация"
 
 
-def get_status(status: RaidStatus):
+def get_raid_status_text(status: RaidStatus) -> str:
     st = {
         RaidStatus.REJECTED: "Ты гордо отказался от ПИНа",
         RaidStatus.ASSIGNED: "Ты пока его не принял",
@@ -71,57 +71,69 @@ class RaidAssign(BaseModel, Model):
     class Meta:
         primary_key = peewee.CompositeKey('time', 'player')
 
-    def get_msg(self, text=''):
-        if self.km_assigned in Wasteland.raid_kms_tz:
-            km_text = f'🚷{Wasteland.raid_locations_by_km[self.km_assigned][1]}<b>{self.km_assigned}км</b>'
+    def get_msg(self, text: str = ''):
+        is_dark_zone_emoji = '🚷' if self.km_assigned in constants.raid_kms_tz else ''
+
+        # noinspection PyTypeChecker
+        if raid_location := constants.raid_locations_by_km.get(self.km_assigned):
+            _, raid_location_emoji = raid_location
         else:
-            km_text = f'<b>{self.km_assigned}км</b>' if (self.km_assigned not in Wasteland.raid_kms) \
-                else f'{Wasteland.raid_locations_by_km[self.km_assigned][1]}<b>{self.km_assigned}км</b>'
-        secret_code = user_id_encode(self.player.telegram_user.user_id)
-        text = f'Тебе выдан <b>ПИН</b>\n<b>{text}</b>\nВремя: <b>{self.time}</b>\nПросто {secret_code}иди на {km_text}\n\n' \
-               f'<code>{get_status(self.status)}</code>\n\n{make_menu(self.status)}\n'
+            raid_location_emoji = ''
+
+        km_text = f'{is_dark_zone_emoji}{raid_location_emoji}<b>{self.km_assigned}км</b>'
+
+        status_text = get_raid_status_text(self.status)
+        menu_text = make_menu(self.status)
+        secret_code = telegram_user_id_encode(self.player.telegram_user.user_id)
+
+        text = (
+            f'Тебе выдан <b>ПИН</b>\n'
+            f'<b>{text}</b>\n'
+            f'Время: <b>{self.time}</b>\n'
+            f'Просто иди на {secret_code}{km_text}{secret_code}\n\n'
+            
+            f'<code>{status_text}</code>\n\n'
+            
+            f'{menu_text}\n'
+        )
         return text
 
     @property
-    def __radar_query(self) -> Radar:
-        return self.player.radars.order_by(Radar.time.desc())
-
-    @property
-    def km_real(self):
-        if self.__radar_query:
-            return self.__radar_query.get().km
-
-    @property
-    def km_real_time(self):
-        if self.__radar_query:
-            return self.__radar_query.get().time
-
-    @property
-    def status(self):
+    def status(self) -> Optional[RaidStatus]:
         if self.status_id is not None:
             return RaidStatus(self.status_id)
 
     @status.setter
-    def status(self, value):
+    def status(self, value: RaidStatus):
         self.status_id = value.value
 
     @classmethod
-    def next_raid_players(cls, status=None, km=None, time=None):
-        if not time:
-            time = next_raid()
+    def next_raid_players(
+        cls,
+        status: Optional[RaidStatus] = None,
+        km: Optional[int] = None,
+        time: Optional[datetime.datetime] = None
+    ):
+        if time is None:
+            time = get_next_raid_date()
+
         query = cls.filter(cls.time == time)
+
         if status is not None:
             query = query.filter(cls.status_id == status)
+
         if km is not None:
             query = query.filter(cls.km_assigned == km)
+
         return query
 
     @classmethod
-    def assign(cls, time, player, km, status=RaidStatus.UNKNOWN):
+    def assign(cls, time: datetime.datetime, player: Player, km: int, status: RaidStatus = RaidStatus.UNKNOWN):
         raid_assigned, created = cls.get_or_create(time=time, player=player)
         if km != raid_assigned.km_assigned:
             raid_assigned.status = status
 
             raid_assigned.km_assigned = km
             raid_assigned.save()
+
         return raid_assigned

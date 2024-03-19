@@ -1,47 +1,39 @@
 import functools
-from io import (
-    RawIOBase,
-    StringIO
-)
+import html
+from io import StringIO, RawIOBase
+from typing import Optional, List, Dict, Any, TypedDict
 
-import telegram
+import peewee
 from jinja2 import Template
-from telegram import ChatAction
 from telegram.ext import Dispatcher
-from telegram.utils.helpers import mention_html
 
-from core import (
-    CommandFilter,
-    EventManager,
-    Handler,
-    MessageManager,
-    Update
-)
-from decorators.permissions import (
-    is_admin,
-    permissions
-)
-from models import (
-    Group,
-    Player
-)
+from core import EventManager, MessageManager, InnerHandler, CommandFilter, InnerUpdate
+from decorators.permissions import permissions, is_admin
+from models import Player, Group
 from modules import BasicModule
 from utils.functions import CustomInnerFilters
+
+
+class RatingFieldInfo(TypedDict):
+    field: peewee.Field
+    label: str
+    visible: bool
 
 
 class BytesIOWrapper(RawIOBase):
     def __init__(self, file, encoding='utf-8', errors='strict'):
         self.file, self.encoding, self.errors = file, encoding, errors
-        self.buf = b''
+        self.buffer = b''
 
-    def readinto(self, buf):
-        if not self.buf:
-            self.buf = self.file.read(4096).encode(self.encoding, self.errors)
-            if not self.buf:
+    def readinto(self, buffer):
+        if not self.buffer:
+            self.buffer = self.file.read(4096).encode(self.encoding, self.errors)
+            if not self.buffer:
                 return 0
-        length = min(len(buf), len(self.buf))
-        buf[:length] = self.buf[:length]
-        self.buf = self.buf[length:]
+
+        length = min(len(buffer), len(self.buffer))
+        buffer[:length] = self.buffer[:length]
+        self.buffer = self.buffer[length:]
         return length
 
     def readable(self):
@@ -51,75 +43,28 @@ class BytesIOWrapper(RawIOBase):
 class RatingAbstractModule(BasicModule):
     stream: StringIO
 
-    COMMANDS = {
-        'bmtop': {
-            'field': Player.sum_stat,
-            'label': 'Топ игроков',
-            'visible': False
-        },
-        'rushtop': {
-            'field': Player.attack,
-            'label': 'Топ дамагеров',
-            'visible': False
-        },
-        'hptop': {
-            'field': Player.hp,
-            'label': 'Топ танков',
-            'visible': False
-        },
-        'acctop': {
-            'field': Player.accuracy,
-            'label': 'Топ снайперов',
-            'visible': False
-        },
-        'agtop': {
-            'field': Player.agility,
-            'label': 'Топ ловкачей',
-            'visible': False
-        },
-        'ortop': {
-            'field': Player.oratory,
-            'label': 'Топ дипломатов',
-            'visible': False
-        },
-        'karmatop': {
-            'field': Player.karma,
-            'label': 'Топ святых',
-            'visible': True
-        },
-        'raidtop': {
-            'field': Player.raid_points,
-            'label': 'Топ рейдеров',
-            'visible': True
-        },
-        'dzentop': {
-            'field': Player.dzen,
-            'label': 'Топ дзенистых',
-            'visible': False
-        },
-        'ranktop': {
-            'field': Player.rank_id,
-            'label': 'Топ ранговых',
-            'visible': False
-        },
-        'rewardtop': {
-            'field': Player.raid_reward,
-            'label': 'Топ профитных',
-            'visible': False
-        },
-        'armortop': {
-            'field': Player.defence,
-            'label': 'Топ укреплённых',
-            'visible': False
-        },
+    COMMANDS: Dict[str, RatingFieldInfo] = {
+        'bmtop': {'field': Player.sum_stat, 'label': 'Топ игроков', 'visible': False},
+        'rushtop': {'field': Player.attack, 'label': 'Топ дамагеров', 'visible': False},
+        'hptop': {'field': Player.hp, 'label': 'Топ танков', 'visible': False},
+        'acctop': {'field': Player.accuracy, 'label': 'Топ снайперов', 'visible': False},
+        'agtop': {'field': Player.agility, 'label': 'Топ ловкачей', 'visible': False},
+        'ortop': {'field': Player.oratory, 'label': 'Топ дипломатов', 'visible': False},
+        'karmatop': {'field': Player.karma, 'label': 'Топ святых', 'visible': True},
+        'raidtop': {'field': Player.raid_points, 'label': 'Топ рейдеров', 'visible': True},
+        'dzentop': {'field': Player.dzen, 'label': 'Топ дзенистых', 'visible': False},
+        'armortop': {'field': Player.defence, 'label': 'Топ укреплённых', 'visible': False},
     }
 
-    def _top(self, field_data):
-        def handler(self, update: Update):
+    def _top(self, field_data: RatingFieldInfo):
+        def handler(self, update: InnerUpdate):
             with StringIO() as self.stream:
-                chat_id = update.telegram_update.message.chat_id
-                from_player = update.player
-                self._send_message(chat_id, from_player, field_data, update.command.argument)
+                self._send_message(
+                    update.effective_chat_id,
+                    update.player,
+                    field_data,
+                    update.command.argument
+                )
 
         handler.__doc__ = f'Выдает {field_data["label"].lower()}'
         return functools.partial(handler, self)
@@ -138,146 +83,175 @@ class RatingModule(RatingAbstractModule):
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         for command in self.COMMANDS:
             self.add_inner_handler(
-                Handler(
-                    CommandFilter(command), self._top(self.COMMANDS[command]),
+                InnerHandler(
+                    CommandFilter(command),
+                    self._top(self.COMMANDS[command]),
                     [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
                 )
             )
+
         self.add_inner_handler(
-            Handler(
-                CommandFilter('top_ls'), self._top_ls,
+            InnerHandler(
+                CommandFilter('top_ls'),
+                self._top_ls,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         super().__init__(event_manager, message_manager, dispatcher)
 
-    def _top_ls(self, update: Update):
-        return self.message_manager.send_message(
-            chat_id=update.telegram_update.message.chat_id,
-            text='\n'.join([f'/{command} - {_dict.get("label", "топ")}' for command, _dict in self.COMMANDS.items()])
+    def _top_ls(self, update: InnerUpdate):
+        text = '\n'.join(
+            f'/{command} - {field_info["label"]}'
+            for command, field_info in self.COMMANDS.items()
         )
 
-    def _send_message(self, chat_id, from_player: Player, field_data, group):
-        group = Group.get_by_name(group)
-        if group and not from_player.telegram_user.is_admin and group not in from_player.members:
+        return self.message_manager.send_message(
+            chat_id=update.effective_chat_id,
+            text=text
+        )
+
+    def _send_message(
+        self,
+        chat_id: int,
+        player: Player,
+        field_data: RatingFieldInfo,
+        group_name: Optional[str]
+    ):
+        if group_name:
+            group = Group.get_by_name(group_name)
+        else:
+            group = None
+
+        if (
+            group and
+            not player.telegram_user.is_admin and
+            group not in player.members
+        ):
             return self.message_manager.send_message(
                 chat_id=chat_id,
                 text='Доступ запрещен',
             )
-        elif not from_player.telegram_user.is_admin and not group:
-            group = from_player.members.where(Group.type == 'goat').first() \
-                    or from_player.members.where(Group.type == 'gang').first()
+
+        if group is None:
+            group = player.members.where(Group.type == 'goat').get_or_none()
+            if group is None:
+                group = player.members.where(Group.type == 'gang').get_or_none()
+
             if not group:
                 return self.message_manager.send_message(
                     chat_id=chat_id,
                     text='Что-то я не вижу твоего козла, скинь панельку своей банды или обратись к админам'
                 )
+
         label = field_data['label']
         if group:
             label = f'{label} группы {group.name}'
-        self._write_msg(from_player, Player.get_top(field_data['field'], group), label, field_data['visible'])
+
+        self._write_msg(player, Player.get_top(field_data['field'], group), label, field_data['visible'])
         self.stream.seek(0)
+
         self.message_manager.send_message(
             chat_id=chat_id,
-            text=self.stream.read(),
-            parse_mode=telegram.ParseMode.HTML,
-            disable_web_page_preview=True
+            text=self.stream.read()
         )
 
-    def _write_msg(self, player_called: Player, query, label, visible):
-        res = [f'<b>{label}</b>:']
+    def _write_msg(self, player_called: Player, query, label: str, visible: bool):
+        rating: List[str] = [f'<b>{html.escape(label)}</b>:']
         for index, player in enumerate(query, 1):
             if index < self.TOP_SIZE or player_called.nickname == player.nickname:
                 if index > self.TOP_SIZE:
-                    res.append('    ... ')
-                res.append(self._format_record(index, player, player_called, visible))
+                    rating.append('    ... ')
+                rating.append(self._format_record(index, player, player_called, visible))
 
-        self.stream.write('\n'.join(res))
+        text = '\n'.join(rating)
+        self.stream.write(text)
 
-    def _format_record(self, index, player: Player, called, visible):
-        nickname = player.nickname
+    def _format_record(self, _: int, player: Player, called: Player, visible: bool) -> str:
         if player.nickname == called.nickname:
-            nickname = mention_html(player.telegram_user_id, player.nickname)
-        return f'{player.idx}) {nickname}: {getattr(player, "value", 0)}' if visible else f'{player.idx}) {player.nickname}'
+            mention = player.mention_html()
+        else:
+            mention = html.escape(player.nickname)
+
+        if visible:
+            return f'{player.idx}) {mention}: {getattr(player, "value", 0)}'
+        return f'{player.idx}) {mention}'
 
 
 class AdminRatingModule(RatingAbstractModule):
     module_name = 'rating_admin'
 
-    def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher = None):
-
+    def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         for command in self.COMMANDS:
             self.add_inner_handler(
-                Handler(
-                    CommandFilter(f'{command}_all'), self._top(self.COMMANDS[command]),
-                    [CustomInnerFilters.from_player]
-                )
-            )
-            self.add_inner_handler(
-                Handler(
-                    CommandFilter(f'{command}_all_u'),
-                    self._top(self.COMMANDS[command], by_username=True),
+                InnerHandler(
+                    CommandFilter(f'{command}_all'),
+                    self._top(self.COMMANDS[command]),
                     [CustomInnerFilters.from_player]
                 )
             )
 
+        self._rating_template = Template(
+            open('static/templates/admin_top.html', 'r', encoding='utf-8').read()
+        )
         super().__init__(event_manager, message_manager, dispatcher)
 
-    def _top(self, field_data, by_username=False):
+    def _top(self, field_data: RatingFieldInfo):
         @permissions(is_admin)
-        def handler(self, update: Update):
+        def handler(self, update: InnerUpdate):
             with StringIO() as self.stream:
-                chat_id = update.telegram_update.message.chat_id
-                from_player = update.player
-                self._send_message(chat_id, from_player, field_data, by_username)
+                self._send_message(
+                    update.effective_chat_id,
+                    update.player,
+                    field_data
+                )
 
         return functools.partial(handler, self)
 
-    def _send_message(self, chat_id, from_player, field_data, by_username):
+    def _send_message(self, chat_id: int, from_player: Player, field_data: RatingFieldInfo):
         self.message_manager.send_message(
             chat_id=chat_id,
-            text='Подожди, сейчас подготовлю файл',
-            parse_mode=telegram.ParseMode.HTML,
-            disable_web_page_preview=True
+            text='Подожди, сейчас подготовлю файл'
         )
 
-        self._write_msg(from_player, Player.get_top(field_data['field']), field_data['label'], by_username)
+        self._write_msg(from_player, Player.get_top(field_data['field']), field_data['label'])
 
         self.stream.seek(0)
 
-        self.message_manager.bot.send_chat_action(
-            chat_id=chat_id,
-            action=ChatAction.UPLOAD_DOCUMENT
-        )
-
         self.message_manager.bot.send_document(
-            chat_id=chat_id, document=BytesIOWrapper(self.stream), filename='top.html'
+            chat_id=chat_id,
+            document=BytesIOWrapper(self.stream),
+            filename='top.html'
         )
 
-    def _write_msg(self, player_called: Player, query, label, by_username=False):
-        template = Template(open('files/templates/admin_top.html', 'r', encoding='utf-8').read())
+    def _write_msg(self, _: Player, query, label: str):
         total = 0
-        tops = []
-        for index, player in enumerate(query, 1):
+        tops: List[Dict[str, Any]] = []
+
+        for player in query:
             tops.append(
                 {
                     'rank': player.idx,
-                    'link': self.link_to_player(player, by_username),
+                    'link': self.link_to_player(player),
                     'value': player.value
                 }
             )
             total += player.value
-        self.stream.write(template.render(tops=tops, total=total, caption=label))
 
-    def _format_record(self, index, player: Player, by_username=False):
-        return (f'<tr>'
-                f'    <td>{player.idx}) {player.get_activity_flag()}</td>'
-                f'    <td>{self.link_to_player(player, by_username)}</td>'
-                f'    <td>{player.value}</td>'
-                f'</tr>')
+        text = self._rating_template.render(tops=tops, total=total, caption=label)
+        self.stream.write(text)
+
+    def _format_record(self, _: int, player: Player) -> str:
+        activity_flag = player.get_activity_flag()
+        mention = self.link_to_player(player)
+
+        return (
+            f'<tr>'
+            f'    <td>{player.idx}) {activity_flag}</td>'
+            f'    <td>{mention}</td>'
+            f'    <td>{player.value}</td>'
+            f'</tr>'
+        )
 
     @staticmethod
-    def link_to_player(player: Player, by_username=False):
-        return f'<a href="tg://resolve?domain={player.telegram_user.username}">' \
-               f'{player.nickname if not by_username else player.telegram_user.username}' \
-               f'</a>'
+    def link_to_player(player: Player) -> str:
+        return player.mention_html()

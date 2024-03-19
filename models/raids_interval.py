@@ -1,5 +1,7 @@
 import datetime
+
 import peewee
+
 from .base import BaseModel
 
 
@@ -9,7 +11,9 @@ class RaidsInterval(BaseModel):
 
     @classmethod
     def interval_by_date(cls, date: datetime.datetime, offset: int = 0):
-        if x := cls.select().where((cls.start_date <= date) & (date <= cls.last_date)).order_by(cls.id.desc()).limit(1):
+        if (
+            x := cls.select().where((cls.start_date <= date) & (date <= cls.last_date)).order_by(cls.id.desc()).limit(
+                1)):
             interval = x.get() if x.exists() else None
         else:
             interval = None

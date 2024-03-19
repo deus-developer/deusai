@@ -1,44 +1,18 @@
+import html
 import re
+from typing import Match, List, Tuple, Set, Optional, Dict
 
-from telegram import (
-    ChatAction,
-    ParseMode
-)
 from telegram.ext import Dispatcher
 
 from config import settings
 from core import CallbackResults
-from core import (
-    CommandFilter,
-    EventManager,
-    Handler as InnerHandler,
-    MessageManager,
-    Update
-)
-from decorators import (
-    command_handler,
-    permissions,
-    send_action
-)
+from core import EventManager, MessageManager, InnerHandler, CommandFilter, InnerUpdate
+from decorators import command_handler, permissions
 from decorators.permissions import is_admin
-from decorators.users import (
-    re_id,
-    re_username
-)
-from models import (
-    Group,
-    GroupPlayerThrough,
-    Player,
-    Settings,
-    TelegramChat,
-    TelegramUser
-)
+from decorators.users import re_id, re_username
+from models import TelegramChat, Group, Player, TelegramUser, GroupPlayerThrough
 from modules import BasicModule
-from utils.functions import (
-    CustomInnerFilters,
-    get_link,
-    user_id_encode
-)
+from utils.functions import CustomInnerFilters, telegram_user_id_encode
 
 
 class EchoModule(BasicModule):
@@ -50,171 +24,215 @@ class EchoModule(BasicModule):
     def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('echo'), self._echo,
+                CommandFilter('echo'),
+                self._echo,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
             )
         )
         self.add_inner_handler(
             InnerHandler(
-                CommandFilter('echo_n'), self._echo_new,
-                [CustomInnerFilters.from_player, CustomInnerFilters.from_admin_chat_or_private]
-            )
-        )
-        self.add_inner_handler(
-            InnerHandler(
-                CommandFilter('pin'), self._pin,
+                CommandFilter('pin'),
+                self._pin,
                 [CustomInnerFilters.from_player, CustomInnerFilters.from_active_chat]
             )
         )
         super().__init__(event_manager, message_manager, dispatcher)
 
-    def _error_send(self, cr: CallbackResults):  # TODO: Добавить отлов всех ошибок
-        e = cr.error
-        if not e:
+    def _error_send_callback(self, callback_results: CallbackResults):
+        error = callback_results.error
+        if not error:
             return
-        block_list, obj = cr.args
-        if "bot was blocked by the user" in e.message:
-            block_list.append(get_link(obj))
 
-    def _error_send_new(self, cr: CallbackResults):
-        e = cr.error
-        if not e:
-            return
-        block_list, obj = cr.args
-        if "bot was blocked by the user" in e.message:
-            block_list.append(obj)
+        blocked_list, chat_id = callback_results.args
+        blocked_list.append(chat_id)
+
+    def _get_text_from_template(self, template: str, chat_id: int) -> str:
+        chat_id_secret = telegram_user_id_encode(chat_id)
+        return template.replace('{secret}', chat_id_secret)
+
+    def _get_recipients_chat_ids_from_group(self, group: Group) -> List[Tuple[str, int]]:
+        query = (
+            Player.select(
+                Player.nickname,
+                Player.telegram_user_id.alias('user_id')
+            )
+            .join(GroupPlayerThrough, on=(GroupPlayerThrough.player_id == Player.id))
+            .where(GroupPlayerThrough.group == group)
+            .dicts()
+        )
+
+        result: List[Tuple[str, int]] = []
+        for row in query:
+            nickname = row['nickname']
+            telegram_user_id = row['user_id']
+            result.append((nickname, telegram_user_id))
+
+        return result
+
+    def _get_recipients_chat_ids_from_users(
+        self,
+        user_id_mentions: Set[int],
+        username_mentions: Set[str]
+    ) -> List[Tuple[str, int]]:
+        query = (
+            TelegramUser.select(
+                Player.nickname,
+                TelegramUser.user_id
+            )
+            .join(Player, on=(Player.telegram_user_id == TelegramUser.user_id))
+            .where(
+                (TelegramUser.user_id << user_id_mentions) |
+                (TelegramUser.username << username_mentions)
+            )
+            .dicts()
+        )
+
+        result: List[Tuple[str, int]] = []
+        for row in query:
+            nickname = row['nickname']
+            telegram_user_id = row['user_id']
+            result.append((nickname, telegram_user_id))
+
+        return result
+
+    def _get_recipients_chat_ids_from_chat(self, chat: TelegramChat) -> List[Tuple[str, int]]:
+        return [
+            (chat.title, chat.chat_id)
+        ]
+
+    def _get_recipients_chat_ids(
+        self,
+        recipients: str,
+        reply_to_message_user_id: Optional[int] = None
+    ) -> List[Tuple[str, int]]:
+        group = Group.get_by_name(recipients)
+
+        if group:  # Если группа
+            return self._get_recipients_chat_ids_from_group(group)
+
+        user_id_mentions: Set[int] = set()
+        username_mentions: Set[str] = set()
+
+        for username in re_username.findall(recipients):
+            username_mentions.add(username)
+
+        for user_id in map(int, re_id.findall(recipients)):
+            user_id_mentions.add(user_id)
+
+        if reply_to_message_user_id:
+            user_id_mentions.add(reply_to_message_user_id)
+
+        if user_id_mentions or username_mentions:
+            return self._get_recipients_chat_ids_from_users(user_id_mentions, username_mentions)
+
+        chat = TelegramChat.get_by_name(recipients)
+        if chat:
+            return self._get_recipients_chat_ids_from_chat(chat)
+
+        return []
+
+    def _get_recipient_mention(self, name: str, chat_id: int) -> str:
+        if chat_id >= 0:
+            return f'<a href="tg://user?id={chat_id}">{html.escape(name)}</a>'
+        return html.escape(name)
 
     @permissions(is_admin)
-    @send_action(ChatAction.TYPING)
-    @command_handler(
-        regexp=re.compile(r'(?P<group_name>.+)\s+\$\s+(?P<title>.+)\s*'),
-        argument_miss_msg='Пришли сообщение в формате "/echo Группа или игроки $ заголовок сообщения\n Текст сообщения"'
-    )
-    def _echo(self, update: Update, match, *args, **kwargs):
-        return update.telegram_update.message.reply_text('Ты используешь устаревшую версию /echo; Новая версия: /echo_n')
-
-    @permissions(is_admin)
-    @send_action(ChatAction.TYPING)
     @command_handler(
         regexp=re.compile(r'(?P<recipients>.+)'),
         argument_miss_msg='Пришли сообщение в формате "/echo Получатели\n Текст сообщения"'
     )
-    def _echo_new(self, update: Update, match, *args, **kwargs):  # TODO: Убрать пометку сообщений, сделать её в самом методе ".message_manager.send_message"
+    def _echo(self, update: InnerUpdate, match: Match):
         message = update.telegram_update.message
-        recipients = match.group('recipients')
-        group = Group.get_by_name(recipients)
-        unknown = []
-        users = []
-        lines = message.text.split('\n')
-        lines.pop(0)
-        if not lines:
+
+        message_lines: List[str] = message.text_html.split('\n')
+        message_lines.pop(0)
+        message_text_template = '\n'.join(message_lines)
+
+        if not message_text_template:
             return update.telegram_update.message.reply_text('Текст сообщения отсутствует!')
-        lines = '\n'.join(lines)
-        lines = lines[0] + '{}' + lines[1: -1] + '{}' + lines[-1] if len(lines) > 2 else lines
-        if group:  # Если группа
-            users = Player.select(Player.nickname, TelegramUser.chat_id, Settings.pings['sendpin'].alias('not_muted')) \
-                .join(GroupPlayerThrough, on=(GroupPlayerThrough.player_id == Player.id)) \
-                .join(TelegramUser, on=(TelegramUser.user_id == Player.telegram_user_id)) \
-                .join(Settings, on=(Player.settings_id == Settings.id)) \
-                .where(GroupPlayerThrough.group == group).dicts()
-        else:  # Если чат или юзеры
-            rid = message.reply_to_message.from_user.id if message.reply_to_message else None
-            ids = re_id.findall(recipients)
-            usernames = re_username.findall(recipients)
-            if rid:
-                ids.append(rid)
-            if not (ids or usernames):
-                # То эт чат.
-                chat = TelegramChat.get_by_name(recipients)
-                if not chat:
-                    return self.message_manager.send_message(
-                        chat_id=message.chat_id,
-                        text=f'Не могу найти "{recipients}"'
-                    )
-                text = message.text
-                text = text.split('\n')
-                text.pop(0)
-                text = '\n'.join(text)
-                self.message_manager.send_message(
-                    chat_id=chat.chat_id,
-                    text=text, parse_mode='HTML'
-                )
-                return self.message_manager.send_message(chat_id=message.chat_id, text=f'Отправил сообщение в чат "{chat.title}"')
-            users = TelegramUser.select(Player.nickname, TelegramUser.chat_id, Settings.pings['echo'].alias('not_muted')) \
-                .join(Player, on=(Player.telegram_user_id == TelegramUser.user_id)) \
-                .join(Settings, on=(Player.settings_id == Settings.id)) \
-                .where((TelegramUser.user_id << ids) | (TelegramUser.username << usernames)).dicts()
-        users_arr = []  # (Nickname, chat_id)
-        block_list = []  # (Nickname, chat_id)
-        mute_list = []
-        text = lines
-        for user in users:
-            nickname, chat_id, muted = user.values()
 
-            muted = ['true', 'false'].index(muted) == 1
+        if message.reply_to_message and message.reply_to_message.from_user:
+            reply_to_message_user_id = message.reply_to_message.from_user.id
+        else:
+            reply_to_message_user_id = None
 
-            secret_code = user_id_encode(chat_id)
-            obj = (nickname, chat_id)
+        recipients_list = self._get_recipients_chat_ids(match.group('recipients'), reply_to_message_user_id)
 
-            if muted:
-                mute_list.append(obj)
-                continue
+        name_by_chat_id: Dict[int, str] = {}
+        blocked_list: List[int] = []
+
+        for name, chat_id in recipients_list:
+            name_by_chat_id[chat_id] = name
+
+            text = self._get_text_from_template(message_text_template, chat_id)
             self.message_manager.send_message(
                 chat_id=chat_id,
-                text=text.format(secret_code, secret_code),
-                parse_mode=ParseMode.HTML,
-                callback=self._error_send_new,
-                callback_args=(block_list, obj)
+                text=text,
+                callback=self._error_send_callback,
+                callback_args=(blocked_list, chat_id)
             )
-            if obj not in block_list:
-                users_arr.append(obj)
 
-        if block_list:
-            block_list = '\n'.join([f'<a href="tg://user?id={obj[1]}">{obj[0]}</a>' for obj in block_list])
-            self.message_manager.send_split(
+        blocked_mentions: List[str] = []
+        for chat_id in blocked_list:
+            name = name_by_chat_id[chat_id]
+            mention = self._get_recipient_mention(name, chat_id)
+            blocked_mentions.append(mention)
+
+        success_mentions: List[str] = []
+        for name, chat_id in recipients_list:
+            if chat_id in blocked_list:
+                continue
+
+            mention = self._get_recipient_mention(name, chat_id)
+            success_mentions.append(mention)
+
+        if blocked_mentions:
+            blocked_mentions_text = '\n'.join(blocked_mentions)
+            self.message_manager.send_message_splitted(
                 chat_id=settings.GOAT_ADMIN_CHAT_ID,
-                msg=f'❌Меня заблокировали эти игроки❌:\n{block_list}',
+                text=f'❌ Не смог доставить сообщение в эти чаты ❌\n\n{blocked_mentions_text}',
                 n=30
             )
-        if mute_list:
-            mute_list = '\n'.join([f'<a href="tg://user?id={obj[1]}">{obj[0]}</a>' for obj in mute_list])
-            self.message_manager.send_split(
+
+        if success_mentions:
+            success_mentions_text = '\n'.join(success_mentions)
+            self.message_manager.send_message_splitted(
                 chat_id=message.chat_id,
-                msg=f'⚠Рассылку отключили эти игроки❌:\n{mute_list}',
-                n=30
-            )
-        if users_arr:
-            users_arr = [f'<a href="tg://user?id={obj[1]}">{obj[0]}</a>' for obj in users_arr]
-            self.message_manager.send_split(
-                chat_id=message.chat_id,
-                msg=f'✅Сообщение отправлено игрокам ({len(users_arr)}): \n{", ".join(users_arr)}',
+                text=f'✅ Сообщение отправлено в эти чаты ✅\n\n{success_mentions_text}',
                 n=30
             )
         else:
             self.message_manager.send_message(
                 chat_id=message.chat_id,
-                text='⚠Кажется я никому не смог доставить сообщение.⚠'
+                text='⚠ Кажется я никуда не смог доставить сообщение ⚠'
             )
 
     @permissions(is_admin)
     @command_handler()
-    def _pin(self, update: Update, *args, **kwargs):
+    def _pin(self, update: InnerUpdate):
         message = update.telegram_update.message
         rid = message.reply_to_message.message_id if message.reply_to_message else None
         if not rid:
-            self.message_manager.send_message(
+            return self.message_manager.send_message(
                 chat_id=message.chat_id,
                 text='⚠Отправьте команду /pin в ответ на сообщение⚠'
             )
-            return
 
         try:
-            self.message_manager.bot.pin_chat_message(chat_id=message.chat_id, message_id=rid, disable_notification=False)
-        except (Exception, ):
-            self.message_manager.send_message(chat_id=message.chat_id, text="❌Я не смог запинить❌")
-            return
+            self.message_manager.bot.pin_chat_message(
+                chat_id=message.chat_id,
+                message_id=rid
+            )
+        except (Exception,):
+            return self.message_manager.send_message(
+                chat_id=message.chat_id,
+                text="❌Я не смог запинить❌"
+            )
 
         try:
-            self.message_manager.bot.delete_message(chat_id=message.chat_id, message_id=message.message_id)
-        except (Exception, ):
+            self.message_manager.bot.delete_message(
+                chat_id=message.chat_id,
+                message_id=message.message_id
+            )
+        except (Exception,):
             pass

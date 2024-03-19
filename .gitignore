@@ -1,3 +1,4 @@
+@ -1,151 +1 @@
 bot.yml
 *.db
 .idea/*
@@ -149,3 +150,4 @@ venv.bak/
 docs/modules
 docs/index.rst
 utils/Display.py
+*__pycache__*

@@ -1,14 +1,6 @@
-from telegram.ext import (
-    Dispatcher,
-    Filters,
-    MessageHandler
-)
+from telegram.ext import Dispatcher, MessageHandler, Filters
 
-from core import (
-    EventManager,
-    MessageManager,
-    Update
-)
+from core import EventManager, MessageManager, InnerUpdate
 from decorators import command_parser
 from decorators.chat import get_chat
 from decorators.log import log_command
@@ -31,5 +23,5 @@ class CommandModule(BasicModule):
     @get_player
     @get_chat
     @log_command
-    def _command_filter(self, update: Update, *args, **kwargs):
+    def _command_filter(self, update: InnerUpdate):
         self.event_manager.invoke_handler_update(update)

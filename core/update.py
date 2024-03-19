@@ -1,58 +1,62 @@
 import datetime
+from typing import Optional, List
+
 import telegram
 
 from core import Command
-import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models import TelegramUser, Player, TelegramChat, Pig
 
 
-class Update:
+class InnerUpdate:
     def __init__(
-        self, telegram_update: telegram.Update = None, delay: datetime.timedelta = None,
-        command: Command = None
+        self,
+        telegram_update: Optional[telegram.Update] = None,
+        delay: Optional[datetime.timedelta] = None,
+        command: Optional[Command] = None
     ):
-        self.taking = None
-        self.taking_success = None
-        self.message = None
-        self.scuffle = None
-        self.lynch = None
-        self.pokemob_dead = None
-        self.dzen_enhancement = None
-        self.notebook = None
-        self.stock = None
-        self.date = None
-        self.timedelta = None
-        self.telegram_update = None
+        self.date: Optional[datetime.datetime] = None
+        self.timedelta: Optional[datetime.timedelta] = None
+
+        self.telegram_update = telegram_update
+        self.effective_chat_id: Optional[int] = None
+
         self.delay = delay
         self.command = command
-        self.invoker = None
-        self.player = None
-        self.chat = None
 
-        if telegram_update is not None:
-            self.telegram_update = telegram_update
-            if telegram_update.message:
-                self.date = telegram_update.message.forward_date or telegram_update.message.date
-                self.timedelta = telegram_update.message.date - telegram_update.message.forward_date \
-                    if telegram_update.message.forward_date else datetime.timedelta(0)
+        self.invoker: Optional["TelegramUser"] = None
+        self.player: Optional["Player"] = None
+        self.chat: Optional["TelegramChat"] = None
+        self.pig: Optional["Pig"] = None
 
-    def to_json(self):
-        from utils.functions import dict_serialize
-        return json.dumps(dict_serialize(self.__dict__))
+        self.karma_transaction = None
+
+        if self.telegram_update and self.telegram_update.message:
+            self.effective_chat_id = self.telegram_update.message.chat_id
+            
+            self.date = telegram_update.message.forward_date or telegram_update.message.date
+
+            if self.telegram_update.message.forward_date:
+                self.timedelta = telegram_update.message.date - telegram_update.message.forward_date
+            else:
+                self.timedelta = datetime.timedelta(0)
 
 
 class UpdateFilter:
-    def __init__(self, attribute: str = None):
-        self.attributes = [attribute] if attribute else []
+    def __init__(self, attribute: Optional[str] = None):
+        self.attributes: List[str] = [attribute] if attribute else []
 
-    def __and__(self, other):
-        ret = UpdateFilter()
-        ret.attributes = [*self.attributes, *other.attributes]
-        return ret
+    def __and__(self, other: "UpdateFilter") -> "UpdateFilter":
+        result = UpdateFilter()
+        result.attributes = [*self.attributes, *other.attributes]
+        return result
 
-    def __call__(self, update: Update):
+    def __call__(self, update: InnerUpdate) -> bool:
         return all(
-            [
-                bool(getattr(update, attr, False)) for attr in self.attributes]
+            getattr(update, attribute, False)
+            for attribute in self.attributes
         )
 
 
@@ -61,10 +65,13 @@ class CommandFilter:
         self.command = command.lower()
         self.description = description
 
-    def _match(self, update: Update):
-        return update.command.command.lower() == self.command if update.command else False
+    def _match(self, update: InnerUpdate) -> bool:
+        if update.command:
+            return update.command.command.lower() == self.command
 
-    def __call__(self, update: Update):
+        return False
+
+    def __call__(self, update: InnerUpdate) -> bool:
         return self._match(update)
 
 
@@ -72,18 +79,8 @@ class CommandNameFilter(CommandFilter):
     def __init__(self, command_name):
         super().__init__(command_name)
 
-    def _match(self, update: Update):
-        return update.command.name.lower() == self.command if update.command else False
+    def _match(self, update: InnerUpdate):
+        if update.command:
+            return update.command.name.lower() == self.command
 
-
-class UpdateCallableFilter:
-    def __init__(self, attribute: callable = None):
-        self.attributes = [attribute] if attribute else []
-
-    def __and__(self, other):
-        ret = UpdateCallableFilter()
-        ret.attributes = [*self.attributes, *other.attributes]
-        return ret
-
-    def __call__(self, update: Update):
-        return all([bool(attr(update)) for attr in self.attributes])
+        return False

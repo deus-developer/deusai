@@ -1,11 +1,11 @@
 import datetime
+
 import peewee
 
 from .base import BaseModel
 
 
 class RaidResult(BaseModel):
-
     km = peewee.IntegerField(null=False, default=0)
     name = peewee.CharField(max_length=255, null=False, default='')
     rating = peewee.IntegerField(null=False, default=0)

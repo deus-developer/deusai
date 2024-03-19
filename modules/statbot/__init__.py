@@ -1,28 +1,18 @@
-from .start import StartModule
-from .stat import StatModule
-from .parser import ParserModule
-from .rating import (
-    RatingModule,
-    AdminRatingModule
-)
+from .activated import ActivatedModule
+from .admin import AdminModule
+from .chat_tools import ChatToolsModule
+from .developer_tools import DeveloperToolsModule
+from .echo import EchoModule
 from .group import GroupModule
 from .karma import KarmaModule
-from .pvp import PVPModule
-from .raid import RaidModule
-from .admin import AdminModule
-from .echo import EchoModule
-from .activated import ActivatedModule
-from .raid_result import RaidResultModule
-from .radar import RadarModule
-from .freeze import FreezeModule
 from .notifications import NotificationsModule
-from .feedback import FeedbackModule
-from .rank import RankModule
+from .parser import ParserModule
+from .raid import RaidModule
+from .rating import RatingModule, AdminRatingModule
 from .settings import SettingsModule
+from .shop import ShopModule
+from .start import StartModule
+from .stat import StatModule
 from .triggers import TriggersModule
-from .notebook import NotebookModule
-from .chattools import ChatToolsModule
-from .developer_tools import DeveloperToolsModule
-from .inventory import InventoryModule
-from .vote import VoteModule
-from .shop2 import ShopModuleUpdate
+from .fraction import FractionModule
+from .pigs import PigsModule

@@ -1,24 +1,8 @@
-import datetime
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, Filters, MessageHandler
 
-from telegram import (
-    Bot,
-    Update
-)
-from telegram.ext import (
-    Dispatcher,
-    Filters,
-    MessageHandler
-)
-
-from core import (
-    EventManager,
-    MessageManager
-)
-from models import (
-    TelegramChat,
-    TelegramUser,
-    database
-)
+from core import EventManager, MessageManager
+from models import TelegramChat, TelegramUser
 from modules import BasicModule
 
 
@@ -29,62 +13,51 @@ class ActivityModule(BasicModule):
     module_name = 'activity'
     group = 0
 
-    def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher = None):
+    def __init__(self, event_manager: EventManager, message_manager: MessageManager, dispatcher: Dispatcher):
         self.add_handler(MessageHandler(Filters.all, self._write_activity))
         super().__init__(event_manager, message_manager, dispatcher)
 
-    def _write_activity(self, bot: Bot, update: Update):
+    def _write_activity(self, _: Bot, update: Update):
         user_data = update.effective_user
+        if user_data is None:
+            return
+
         chat_data = update.effective_chat
-        message_data = update.effective_message
 
-        with database:
-            if not user_data:
-                return
-            user, created = TelegramUser.get_or_create(user_id=user_data.id)
-            if created:
-                self.logger.info(
-                    'New user: #%s @%s', user_data.id,
-                    user_data.username
-                )
-            else:
-                for attr in ('username', 'first_name', 'last_name'):
-                    old = getattr(user, attr)
-                    new = getattr(user_data, attr)
-                    if old != new:
-                        self.logger.info(
-                            'User #%s @%s change %s: %s → %s',
-                            user_data.id, user.username, attr,
-                            old, new
-                        )
-            user.username = user_data.username
-            user.first_name = user_data.first_name
-            user.last_name = user_data.last_name
-            user.last_seen_date = datetime.datetime.now()
-            if chat_data.type == 'private':
-                user.chat_id = chat_data.id
-            user.save()
+        telegram_user = {
+            TelegramUser.user_id: user_data.id,
+            TelegramUser.username: user_data.username,
+            TelegramUser.first_name: user_data.first_name,
+            TelegramUser.last_name: user_data.last_name
+        }
+        telegram_user_update = {
+            TelegramUser.username: user_data.username,
+            TelegramUser.first_name: user_data.first_name,
+            TelegramUser.last_name: user_data.last_name
+        }
 
-            if chat_data.type == 'private':
-                return
-            chat, created = TelegramChat.get_or_create(
-                chat_id=chat_data.id, chat_type=chat_data.type
-            )
-            if created:
-                self.logger.info('New chat: %s', chat_data.title)
-                chat.title = chat_data.title
-                chat.save()
-                if chat_data.type != 'private':
-                    self.message_manager.send_message(
-                        chat_id=chat_data.id,
-                        text='Данный чат не авторизован.\n'
-                             f'CHAT_ID: {chat_data.id}\n'
-                             'Напишите администратору для авторизации.'
-                    )
-            elif chat.title != chat_data.title:
-                self.logger.info(
-                    'Chat renamed: %s → %s', chat.title,
-                    chat_data.title
-                )
-                chat.title = chat_data.title
-                chat.save()
+        if chat_data.type == 'private':
+            telegram_user[TelegramUser.chat_id] = chat_data.id
+            telegram_user_update[TelegramUser.chat_id] = chat_data.id
+
+        TelegramUser.insert(telegram_user).on_conflict(
+            conflict_target=[TelegramUser.user_id, ],
+            update=telegram_user_update
+        ).execute()
+
+        if chat_data.type == 'private':
+            return
+
+        telegram_chat = {
+            TelegramChat.chat_id: chat_data.id,
+            TelegramChat.chat_type: chat_data.type,
+            TelegramChat.title: chat_data.title
+        }
+        telegram_chat_update = {
+            TelegramChat.title: chat_data.title
+        }
+
+        TelegramChat.insert(telegram_chat).on_conflict(
+            conflict_target=[TelegramChat.chat_id, ],
+            update=telegram_chat_update
+        ).execute()

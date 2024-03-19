@@ -1,7 +1,9 @@
-import peewee
 import datetime
+
+import peewee
 from peewee import Model
-from models import BaseModel
+
+from .base import BaseModel
 
 
 class KarmaTransition(BaseModel, Model):

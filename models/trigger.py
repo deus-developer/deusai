@@ -1,11 +1,8 @@
 import peewee
-import datetime
 from peewee import Model
 
-from models import (
-    BaseModel,
-    TelegramChat
-)
+from .base import BaseModel
+from .telegram_chat import TelegramChat
 
 
 class Trigger(BaseModel, Model):
@@ -15,9 +12,14 @@ class Trigger(BaseModel, Model):
     answer = peewee.TextField(default='Триггер!')
     type = peewee.CharField(
         max_length=9,
-        choices=(('AUDIO', 'audio'), ('DOCUMENT', 'document'),
-                 ('PHOTO', 'photo'), ('STICKER', 'sticker'),
-                 ('VIDEO', 'video'), ('TEXT', 'text'))
+        choices=(
+            ('AUDIO', 'audio'),
+            ('DOCUMENT', 'document'),
+            ('PHOTO', 'photo'),
+            ('STICKER', 'sticker'),
+            ('VIDEO', 'video'),
+            ('TEXT', 'text')
+        )
     )
     file_path = peewee.CharField(max_length=255, default='')
 

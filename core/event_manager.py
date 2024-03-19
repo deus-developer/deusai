@@ -1,7 +1,9 @@
+from typing import List
+
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from .handler import Handler
-from .update import Update
+from .handler import InnerHandler
+from .update import InnerUpdate
 
 
 class EventManager:
@@ -9,11 +11,11 @@ class EventManager:
 
     def __init__(self, scheduler: BackgroundScheduler):
         self.scheduler = scheduler
-        self.handlers = []
+        self.handlers: List[InnerHandler] = []
 
-    def add_handler(self, handler: Handler):
+    def add_handler(self, handler: InnerHandler):
         self.handlers.append(handler)
 
-    def invoke_handler_update(self, update: Update):
+    def invoke_handler_update(self, update: InnerUpdate):
         for handler in self.handlers:
             handler(update=update)

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <style>
+            caption {
+                font-family: 'Rock Salt', cursive;
+                padding: 20px;
+                font-style: italic;
+                color: #666;
+                text-align: center;
+                letter-spacing: 1px;
+            }
+
+            #rating {
+                font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+                border-collapse: collapse;
+                width: 100%;
+            }
+
+            #rating td,
+            #rating th {
+                border: 1px solid #ddd;
+                padding: 8px;
+            }
+
+            #rating tfoot tr td {
+                font-weight: bold;
+            }
+
+            #rating tr:nth-child(even) {
+                background-color: #f2f2f2;
+            }
+
+            #rating tr:hover {
+                background-color: #ddd;
+            }
+
+            #rating th {
+                padding-top: 12px;
+                padding-bottom: 12px;
+                text-align: left;
+                background-color: #4CAF50;
+                color: white;
+            }
+        </style>
+        <meta charset="UTF-8">
+        <title>{{ caption }}</title>
+    </head>
+    <body>
+        <table id="rating">
+            <caption>{{caption}}</caption>
+            <tr>
+                <th>Позиция</th>
+                <th>Игрок</th>
+                <th>Значение</th>
+            </tr>
+
+            {% for top in tops %}
+                <tr>
+                    <td>{{top['rank']}}</td>
+                    <td>{{top['link']}}</td>
+                    <td>{{top['value']}}</td>
+                </tr>
+            {% endfor %}
+
+            <tfoot>
+                <td colspan="2">Общий счет:</td>
+                <td>{{total}}</td>
+            </tfoot>
+        </table>
+    </body>
+</html>

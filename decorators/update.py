@@ -1,16 +1,18 @@
 import functools
+
 import telegram
-from core import Update
+
+from core import InnerUpdate
 
 
-def inner_update(UpdateType=Update):
+def inner_update(update_type=InnerUpdate):
     def wraper(func):
         """Creates inner update"""
 
         @functools.wraps(func)
-        def decorator(self, bot: telegram.Bot, update: telegram.Update, *args, **kwargs):
-            in_update = UpdateType(update)
-            return func(self, update=in_update, *args, **kwargs)
+        def decorator(self, _: telegram.Bot, update: telegram.Update, *args, **kwargs):
+            inner_update_object = update_type(update)
+            return func(self, update=inner_update_object, *args, **kwargs)
 
         return decorator
 
